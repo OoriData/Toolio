@@ -1,0 +1,164 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "MLXStructuredLMServer"
+dynamic = ["version"]
+description = "OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a JSON schema)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+keywords = []
+authors = [
+  { name = "Uche Ogbuji", email = "uche@oori.dev" },
+  # { name = "Osi Ogbuji", email = "osita@oori.dev" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "llm-structured-output",
+  "ogbujipt",
+  "fastapi",
+  "click",
+  "httpx",
+  # "amara3.iri"
+]
+
+[project.urls]
+Documentation = "https://github.com/OoriData/MLXStructuredLMServer#readme"
+Issues = "https://github.com/OoriData/MLXStructuredLMServer/issues"
+Source = "https://github.com/OoriData/MLXStructuredLMServer"
+
+[tool.hatch.version]
+path = "pylib/__about__.py"
+
+# Rewriting path in distribution
+[tool.hatch.build.sources]
+"pylib" = "mlx_struct_lm_server"
+# "resources" = "mlx_struct_lm_server/resources"
+
+# [tool.hatch.build.targets.wheel.force-include]
+# "resource" = "mlx_struct_lm_server/resource"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["pylib", "resource"]
+
+[tool.hatch.build.targets.wheel.sources]
+"pylib" = "mlx_struct_lm_server"
+"resource" = "mlx_struct_lm_server/resource"
+
+[project.scripts]
+MLXStructuredLMServer = "mlx_struct_lm_server.cli.server:main"
+MLXStructuredLMQRequest = "mlx_struct_lm_server.cli.request:main"
+
+# Hatch environemnts are too fiddly. For example, from `hatch run test` I get 
+# ModuleNotFoundError: No module named 'mlx_struct_lm_server'
+# This may well have to do with my rewriting path in distribution,
+# But I'm not compromising on that, so I guess just install & use
+# e.g. pytest directly (tried dev-mode false, but no difference)
+[tool.hatch.envs.default]
+dependencies = [
+  "coverage[toml]>=6.5",
+  "pytest",
+  "pytest-mock",
+  "pytest-httpx",
+  "pytest-asyncio",
+]
+dev-mode = false
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:test}"
+test-cov = "coverage run -m pytest {args:test}"
+cov-report = [
+  "- coverage combine",
+  "coverage report",
+]
+cov = [
+  "test-cov",
+  "cov-report",
+]
+
+[[tool.hatch.envs.all.matrix]]
+python = ["3.11", "3.12"]
+
+[tool.hatch.envs.lint]
+detached = true
+dependencies = [
+  "black>=23.1.0",
+  "mypy>=1.0.0",
+  "ruff>=0.0.243",
+]
+[tool.hatch.envs.lint.scripts]
+typing = "mypy --install-types --non-interactive {args:pylib/mlx_struct_lm_server test}"
+style = [
+  "ruff {args:.}",
+  "black --check --diff {args:.}",
+]
+fmt = [
+  "black {args:.}",
+  "ruff --fix {args:.}",
+  "style",
+]
+all = [
+  "style",
+  "typing",
+]
+
+[tool.black]
+target-version = ["py311"]
+line-length = 120
+skip-string-normalization = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+lint.select = ["E", "F"]
+lint.ignore = [
+  # Allow non-abstract empty methods in abstract base classes
+  "B027",
+  # Allow boolean positional values in function calls, like `dict.get(... True)`
+  "FBT003",
+  # Ignore checks for possible passwords
+  "S105", "S106", "S107",
+  # Ignore complexity
+  "C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915",
+]
+lint.unfixable = [
+  # Don't touch unused imports
+  "F401",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mlx_struct_lm_server"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can use magic values, assertions, and relative imports
+"test/**/*" = ["PLR2004", "S101", "TID252"]
+
+[tool.coverage.run]
+source_pkgs = ["mlx_struct_lm_server", "test"]
+branch = true
+parallel = true
+omit = [
+  "pylib/__about__.py",
+]
+
+[tool.coverage.paths]
+mlx_struct_lm_server = ["pylib", "*/pylib"]
+test = ["test", "*/test"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]

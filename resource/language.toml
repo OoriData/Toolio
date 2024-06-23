@@ -1,0 +1,40 @@
+# Word loom format. Top level lang is default for this file
+# https://github.com/OoriData/OgbujiPT/wiki/Word-Loom:-A-format-for-managing-language-for-AI-LLMs-(including-prompts)
+lang = "en"
+
+# Language item, which can be looked up in the code as e.g. `loom['action_reaction_sysmsg']`
+[one_tool_prompt_leadin]
+_ = """
+You are a helpful assistant with access to a tool that you must invoke to answer the user's request.
+The tool is:
+Tool"""
+
+[one_tool_prompt_schemalabel]
+_ = "Invocation schema"
+
+[one_tool_prompt_tail]
+_ = "Your answer is a JSON object according to the invocation schema in order to answer the user request below."
+
+[multi_tool_prompt_leadin]
+_ = """
+You are a helpful assistant with access to tools that you must invoke to answer the user's request.
+The following tools are available:
+"""
+
+[multi_tool_prompt_tail]
+_ = """
+Your answer is a JSON array with one or more tool invocations according to the appropriate schema(s)
+in order to answer the user request below.
+"""
+
+[select_tool_prompt_tail]
+_ = """
+Your answer is a JSON object according to the invocation schema of the most appropriate tool to use
+to answer the user request below.
+"""
+
+[select_tool_prompt_toollabel]
+_ = "Function"
+
+[select_tool_prompt_schemalabel]
+_ = "Tool schema"
