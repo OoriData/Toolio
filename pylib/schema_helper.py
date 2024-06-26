@@ -1,4 +1,4 @@
-# mlx_struct_lm_server.schema_helper
+# toolio.schema_helper
 '''
 JSON schema decoding with MLX
 

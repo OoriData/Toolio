@@ -1,4 +1,6 @@
-# MLXStructuredLMServer
+# Toolio
+
+Come along and ride on a fantastic journey, with AI in the passenger seat and a flatbed full of tools.
 
 OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It's also really useful for more reliable tool calling.
 
@@ -6,11 +8,11 @@ Builds on: https://github.com/otriscon/llm-structured-output/
 
 # Running the server
 
-`MLXStructuredLMServer` is a FastAPI program that you can use to host MLX-format LLMs for structured output query, for example, if you are on M1/M2/M3/M4 Mac you can use the MLX format LLM model `mlx-community/Hermes-2-Theta-Llama-3-8B-4bit` as follows (from the cloned directory of this repository):
+`toolio_server` is a FastAPI program that you can use to host MLX-format LLMs for structured output query, for example, if you are on M1/M2/M3/M4 Mac you can use the MLX format LLM model `mlx-community/Hermes-2-Theta-Llama-3-8B-4bit` as follows (from the cloned directory of this repository):
 
 ```sh
 pip install -U .
-MLXStructuredLMServer --model=mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
+toolio_server --model=mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
 ```
 
 This will download the model (a little over 4GB) to your local HuggingFace disk cache, and running it will take up ablut that much of your unified RAM.
@@ -46,12 +48,12 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 
 # Using the command line client
 
-cURL is a pretty raw interface for this, though. For example, you have to parse the resulting response JSON. It's a lot easier to use the more specialized command line client tool `MLXStructuredLMQRequest`. An example of a very simple data extraction use-case:
+cURL is a pretty raw interface for this, though. For example, you have to parse the resulting response JSON. It's a lot easier to use the more specialized command line client tool `toolio_request`. An example of a very simple data extraction use-case:
 
 ```sh
 export LMPROMPT='Which countries are ementioned in the sentence "Uche went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}'
 export LMSCHEMA='{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}'
-MLXStructuredLMQRequest --apibase="http://127.0.0.1:8000" --prompt=$LMPROMPT --schema=$LMSCHEMA
+toolio_request --apibase="http://127.0.0.1:8000" --prompt=$LMPROMPT --schema=$LMSCHEMA
 ```
 
 (…and yes, in practice a smaller, specialized entity extraction model might be better for this)
@@ -67,7 +69,7 @@ Or if you have the prompt or schema written to files:
 ```sh
 echo 'Which countries are ementioned in the sentence "Uche went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}' > /tmp/llmprompt.txt
 echo '{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}' > /tmp/countries.schema.json
-MLXStructuredLMQRequest --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --schema-file=/tmp/countries.schema.json
+toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --schema-file=/tmp/countries.schema.json
 ```
 
 ## Tool calling
@@ -77,7 +79,7 @@ You can also try tool usage (function-calling) prompts, a key technique in LLM a
 ```sh
 echo 'What'\''s the weather like in Boston today?' > /tmp/llmprompt.txt
 echo '{"tools": [{"type": "function","function": {"name": "get_current_weather","description": "Get the current weather in a given location","parameters": {"type": "object","properties": {"location": {"type": "string","description": "City and state, e.g. San Francisco, CA"},"unit": {"type": "string","enum": ["℃","℉"]}},"required": ["location"]}}}], "tool_choice": "auto"}' > /tmp/toolspec.json
-MLXStructuredLMQRequest --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json
+toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json
 ```
 
 You can expect a response such as
@@ -105,8 +107,20 @@ The model has invoked the following tool calls in response to the prompt:
 ```sh
 echo 'How many days will there be next month?' > /tmp/llmprompt.txt
 echo '{"tools": [{"type": "function","function": {"name": "date_today","description": "Get the current date in computer-friendly format","parameters": {"type": "object"},"pyfunc": "datetime|datetime.today"}}], "tool_choice": "auto"}' > /tmp/toolspec.json
-MLXStructuredLMQRequest --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json --toolmod=datetime
+toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json --toolmod=datetime
 ```
+
+
+
+"properties": {"square": {"type": "number", "description": "Number from which to find the square root"}},"required": ["square"], 
+
+
+```sh
+echo 'What is the square root of 256?' > /tmp/llmprompt.txt
+echo '{"tools": [{"type": "function","function": {"name": "square_root","description": "Get the square root of the given number","parameters": {"type": "object", "properties": {"square": {"type": "number", "description": "Number from which to find the square root"}},"required": ["square"]},"pyfunc": "math|sqrt"}}], "tool_choice": "auto"}' > /tmp/toolspec.json
+toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json --toolmod=datetime
+```
+
 
 
 

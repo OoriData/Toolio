@@ -1,4 +1,4 @@
-# mlx_struct_lm_server.client_helper
+# toolio.client_helper
 '''
 Tools to help with HTTP query of LLMs for structured response, as hosted by MLXStructuredLMServer
 
@@ -30,7 +30,7 @@ class struct_mlx_chat_api:
 
     Note: we only support chat-style completions
 
-    >>> import asyncio; from mlx_struct_lm_server.client_helper import struct_mlx_chat_api
+    >>> import asyncio; from toolio.client_helper import struct_mlx_chat_api
     >>> llm = struct_mlx_chat_api(model='gpt-3.5-turbo')
     >>> resp = asyncio.run(llm_api(prompt_to_chat('Knock knock!')))
     >>> resp.first_choice_text
@@ -175,7 +175,7 @@ class struct_mlx_chat_api:
             if max_trips <= 0:
                 # FIXME: i18n
                 warnings.warn('Maximum LLM trips exhausted without a final answer', stacklevel=2)
-            return resp
+        return resp
 
     async def round_trip(self, req, req_data, timeout, apikey, **kwargs):
         '''

@@ -1,4 +1,4 @@
-# mlx_struct_lm_server.cli.server
+# toolio.cli.server
 '''
 LLM server with OpenAI-like API, for structured prompting support & including function/tool calling
 
@@ -28,8 +28,8 @@ import uvicorn
 
 from llm_structured_output.util.output import info, warning, debug
 
-from mlx_struct_lm_server import LANG
-from mlx_struct_lm_server.schema_helper import Model
+from toolio import LANG
+from toolio.schema_helper import Model
 
 
 app_params = {}
@@ -629,4 +629,4 @@ class ToolCallStreamingResponder(ToolCallResponder):
 @click.option('--llmtemp', default='0.1', type=float, help='LLM sampling temperature')
 def main(host, port, model, default_schema, default_schema_file, llmtemp):
     app_params.update(model=model, default_schema=default_schema, default_schema_fpath=default_schema_file, llmtemp=llmtemp)
-    uvicorn.run('mlx_struct_lm_server.cli.server:app', host=host, port=port, reload=False)
+    uvicorn.run('toolio.cli.server:app', host=host, port=port, reload=False)

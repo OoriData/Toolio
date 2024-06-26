@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "MLXStructuredLMServer"
+name = "Toolio"
 dynamic = ["version"]
 description = "OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a JSON schema)"
 readme = "README.md"
@@ -32,34 +32,34 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/OoriData/MLXStructuredLMServer#readme"
-Issues = "https://github.com/OoriData/MLXStructuredLMServer/issues"
-Source = "https://github.com/OoriData/MLXStructuredLMServer"
+Documentation = "https://github.com/OoriData/Toolio#readme"
+Issues = "https://github.com/OoriData/Toolio/issues"
+Source = "https://github.com/OoriData/Toolio"
 
 [tool.hatch.version]
 path = "pylib/__about__.py"
 
 # Rewriting path in distribution
 [tool.hatch.build.sources]
-"pylib" = "mlx_struct_lm_server"
-# "resources" = "mlx_struct_lm_server/resources"
+"pylib" = "toolio"
+# "resources" = "toolio/resources"
 
 # [tool.hatch.build.targets.wheel.force-include]
-# "resource" = "mlx_struct_lm_server/resource"
+# "resource" = "toolio/resource"
 
 [tool.hatch.build.targets.wheel]
 only-include = ["pylib", "resource"]
 
 [tool.hatch.build.targets.wheel.sources]
-"pylib" = "mlx_struct_lm_server"
-"resource" = "mlx_struct_lm_server/resource"
+"pylib" = "toolio"
+"resource" = "toolio/resource"
 
 [project.scripts]
-MLXStructuredLMServer = "mlx_struct_lm_server.cli.server:main"
-MLXStructuredLMQRequest = "mlx_struct_lm_server.cli.request:main"
+toolio_server = "toolio.cli.server:main"
+toolio_request = "toolio.cli.request:main"
 
 # Hatch environemnts are too fiddly. For example, from `hatch run test` I get 
-# ModuleNotFoundError: No module named 'mlx_struct_lm_server'
+# ModuleNotFoundError: No module named 'toolio'
 # This may well have to do with my rewriting path in distribution,
 # But I'm not compromising on that, so I guess just install & use
 # e.g. pytest directly (tried dev-mode false, but no difference)
@@ -95,7 +95,7 @@ dependencies = [
   "ruff>=0.0.243",
 ]
 [tool.hatch.envs.lint.scripts]
-typing = "mypy --install-types --non-interactive {args:pylib/mlx_struct_lm_server test}"
+typing = "mypy --install-types --non-interactive {args:pylib/toolio test}"
 style = [
   "ruff {args:.}",
   "black --check --diff {args:.}",
@@ -135,7 +135,7 @@ lint.unfixable = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["mlx_struct_lm_server"]
+known-first-party = ["toolio"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -145,7 +145,7 @@ ban-relative-imports = "all"
 "test/**/*" = ["PLR2004", "S101", "TID252"]
 
 [tool.coverage.run]
-source_pkgs = ["mlx_struct_lm_server", "test"]
+source_pkgs = ["toolio", "test"]
 branch = true
 parallel = true
 omit = [
@@ -153,7 +153,7 @@ omit = [
 ]
 
 [tool.coverage.paths]
-mlx_struct_lm_server = ["pylib", "*/pylib"]
+toolio = ["pylib", "*/pylib"]
 test = ["test", "*/test"]
 
 [tool.coverage.report]

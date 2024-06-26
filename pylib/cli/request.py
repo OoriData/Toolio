@@ -1,13 +1,13 @@
-# mlx_struct_lm_server.cli.request
+# toolio.cli.request
 '''
 Sample of a very simple data extraction use-case
 
 …and yes, in practice a smaller, specialized entity extraction model might be better for this
 
 ```sh
-export LMPROMPT='Which countries are ementioned in the sentence "Uche went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}'
+export LMPROMPT='Which countries are mentioned in the sentence "Uche went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}'
 export LMSCHEMA='{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}'
-MLXStructuredLMQRequest --apibase="http://127.0.0.1:8000" --prompt=$LMPROMPT --schema=$LMSCHEMA --max-tokens 1000
+toolio_request --apibase="http://127.0.0.1:8000" --prompt=$LMPROMPT --schema=$LMSCHEMA --max-tokens 1000
 ```
 
 With any decent LLM you should get the following **and no extraneous text cluttering things up!**
@@ -21,7 +21,7 @@ Or if you have the prompt or schema written to files:
 ```sh
 echo 'Which countries are ementioned in the sentence "Uche went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}' > /tmp/llmprompt.txt
 echo '{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}' > /tmp/countries.schema.json
-MLXStructuredLMQRequest --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --schema-file=/tmp/countries.schema.json --max-tokens 1000
+toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --schema-file=/tmp/countries.schema.json --max-tokens 1000
 ```
 
 You can also try tool usage (function-calling) prompts. A schema will automatically be generated from the tool specs
@@ -29,7 +29,7 @@ You can also try tool usage (function-calling) prompts. A schema will automatica
 ```sh
 echo 'What'\''s the weather like in Boston today?' > /tmp/llmprompt.txt
 echo '{"tools": [{"type": "function","function": {"name": "get_current_weather","description": "Get the current weather in a given location","parameters": {"type": "object","properties": {"location": {"type": "string","description": "City and state, e.g. San Francisco, CA"},"unit": {"type": "string","enum": ["℃","℉"]}},"required": ["location"]}}}], "tool_choice": "auto"}' > /tmp/toolspec.json
-MLXStructuredLMQRequest --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json --max-tokens 1000
+toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json --max-tokens 1000
 ```
 
 You can expect a response such as
@@ -60,7 +60,7 @@ import asyncio
 import click
 from ogbujipt.llm_wrapper import prompt_to_chat
 
-from mlx_struct_lm_server.client_helper import struct_mlx_chat_api, response_type
+from toolio.client_helper import struct_mlx_chat_api, response_type
 
 
 @click.command()
