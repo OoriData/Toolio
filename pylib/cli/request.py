@@ -55,6 +55,7 @@ The model has invoked the following tool calls in response to the prompt:
 '''
 import json
 import asyncio
+# import importlib
 
 import click
 from ogbujipt.llm_wrapper import prompt_to_chat
@@ -80,9 +81,12 @@ from mlx_struct_lm_server.client_helper import struct_mlx_chat_api, response_typ
     help='Path to tools specification based on OpenAI format, to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt. Overrides --tools arg')
 @click.option('--system', help='Optional system prompt')
 @click.option("--max-tokens", type=int, help='Maximum number of tokens to generate')
+
+@click.option('--toolmod', '-m', multiple=True, help='Python module containing tools; will be imported whether or not tools in this module are specified')
+
 @click.option('--model', type=str, help='Path to locally-hosted MLF format model')
 @click.option('--temp', default='0.1', type=float, help='LLM sampling temperature')
-def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, system, max_tokens, model, temp):
+def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, toolmod, system, max_tokens, model, temp):
     if prompt_file:
         prompt = prompt_file.read()
     if schema_file:
@@ -97,10 +101,18 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, s
         tools_obj = json.loads(tools)
     else:
         tools_obj = None
+
+    # Import & register any tools
+    # for tm in toolmod:
+    #      modobj = importlib.import_module(tm)
+
     llm = struct_mlx_chat_api(base_url=apibase)
-    response_t, resp = asyncio.run(llm(prompt_to_chat(prompt, system=system), schema=schema_obj, tools=tools_obj))
-    if response_t == response_type.TOOL_CALL:
+    resp = asyncio.run(llm(prompt_to_chat(prompt, system=system), schema=schema_obj, tools=tools_obj, max_trips=3))
+    if resp['response_type'] == response_type.TOOL_CALL:
         print('The model has invoked the following tool calls in response to the prompt:')
-        print(resp.toolcall)
-    elif response_t == response_type.MESSAGE:
+        tcs = resp['choices'][0]['message']['tool_calls']
+        for tc in tcs:
+            del tc['function']['arguments']
+        print(json.dumps(tcs, indent=2))
+    elif resp['response_type'] == response_type.MESSAGE:
         print(resp.first_choice_text)

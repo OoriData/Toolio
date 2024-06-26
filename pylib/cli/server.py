@@ -17,6 +17,7 @@ import os
 from enum import Enum
 from typing import Literal, List, Optional, Union
 from contextlib import asynccontextmanager
+import warnings
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -79,6 +80,7 @@ class V1ChatMessageRole(str, Enum):
     SYSTEM = 'system'
     USER = 'user'
     ASSISTANT = 'assistant'
+    TOOL = 'tool'
 
 
 class V1ChatMessage(BaseModel):
@@ -136,12 +138,17 @@ class V1ChatCompletionsRequest(BaseModel):
     max_tokens: int = 1000
     temperature: float = 0.0
     messages: List[V1ChatMessage]
+    # FIXME: We don't need to keep the function_call logic, I don't think
     # The 'functions' and 'function_call' fields have been dreprecated and
     # replaced with 'tools' and 'tool_choice', that work similarly but allow
     # for multiple functions to be invoked.
     functions: List[V1Function] = None
     function_call: Union[V1ToolChoiceKeyword, V1ToolChoiceFunction] = None
     tools: List[V1ToolFunction] = None
+    # tool_choice: "auto" (default): allow model decide whether to call functions & if so, which
+    # tool_choice: "required": force model to always call one or more functions
+    # tool_choice: {"type": "function", "function": {"name": "my_function"}}: force model to call only one specific function
+    # tool_choice: "none": disable function calling & force model to only generate a user-facing message
     tool_choice: Union[V1ToolChoiceKeyword, V1ToolChoiceFunction] = None
     tool_options: V1ToolOptions = None
     response_format: V1ResponseFormat = None
@@ -172,6 +179,8 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
     is_legacy_function_call = False
     if req_data.tool_choice == 'none':
         pass
+    elif req_data.tools is None:
+        warnings.warn('Malformed request: tool_choice is not omitted or "none" yet no tools were provided')
     elif req_data.tool_choice == 'auto':
         functions = [tool.function for tool in req_data.tools if tool.type == 'function']
     elif req_data.tool_choice is not None:
@@ -360,6 +369,16 @@ class ChatCompletionStreamingResponder(ChatCompletionResponder):
 
 
 class ToolCallResponder(ChatCompletionResponder):
+    '''
+    For notes on OpenAI-style tool calling:
+    https://platform.openai.com/docs/guides/function-calling?lang=python
+
+    > The basic sequence of steps for function calling is as follows:
+    > 1. Call the model with the user query and a set of functions defined in the functions parameter.
+    > 2. The model can choose to call one or more functions; if so, the content will be a stringified JSON object adhering to your custom schema (note: the model may hallucinate parameters).
+    > 3. Parse the string into JSON in your code, and call your function with the provided arguments if they exist.
+    > 4. Call the model again by appending the function response as a new message, and let the model summarize the results back to the user.
+    '''
     def __init__(
         self, model_name: str, functions: list[dict], is_legacy_function_call: bool
     ):

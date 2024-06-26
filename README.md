@@ -70,7 +70,9 @@ echo '{"type": "array", "items": {"type": "object", "properties": {"name": {"typ
 MLXStructuredLMQRequest --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --schema-file=/tmp/countries.schema.json
 ```
 
-You can also try tool usage (function-calling) prompts. A schema will automatically be generated from the tool specs
+## Tool calling
+
+You can also try tool usage (function-calling) prompts, a key technique in LLM agent frameworks. A schema will automatically be generated from the tool specs
 
 ```sh
 echo 'What'\''s the weather like in Boston today?' > /tmp/llmprompt.txt
@@ -97,6 +99,16 @@ The model has invoked the following tool calls in response to the prompt:
   }
 ]
 ```
+
+## Actually running the functions
+
+```sh
+echo 'How many days will there be next month?' > /tmp/llmprompt.txt
+echo '{"tools": [{"type": "function","function": {"name": "date_today","description": "Get the current date in computer-friendly format","parameters": {"type": "object"},"pyfunc": "datetime|datetime.today"}}], "tool_choice": "auto"}' > /tmp/toolspec.json
+MLXStructuredLMQRequest --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json --toolmod=datetime
+```
+
+
 
 # Python client
 
