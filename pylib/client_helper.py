@@ -8,7 +8,7 @@ Modeled on ogbujipt.llm_wrapper.openai_api & ogbujipt.llm_wrapper.openai_chat_ap
 # import sys
 import json
 import warnings
-# from enum import Enum
+from enum import Flag, auto
 # from dataclasses import dataclass
 import importlib
 
@@ -23,61 +23,33 @@ from ogbujipt.llm_wrapper import llm_response, response_type
 HTTP_SUCCESS = 200
 
 
+class tool_flag(Flag):
+    ASSISTANT_RESPONSE = auto()  # Convert tool role responses to assistant role
+    REMOVE_USED_TOOLS = auto()  # Remove tools which the LLM has already used from subsequent trips
+
+
+DEFAULT_FLAGS = tool_flag.ASSISTANT_RESPONSE | tool_flag.REMOVE_USED_TOOLS
+
+
 class struct_mlx_chat_api:
     '''
     Wrapper for OpenAI chat-style LLM API endpoint, with support for structured responses
     via schema specifiation in query
 
-    Note: we only support chat-style completions
+    Note: Only supports chat-style completions
 
     >>> import asyncio; from toolio.client_helper import struct_mlx_chat_api
-    >>> llm = struct_mlx_chat_api(model='gpt-3.5-turbo')
+    >>> llm = struct_mlx_chat_api(base_url='http://localhost:8000')
     >>> resp = asyncio.run(llm_api(prompt_to_chat('Knock knock!')))
     >>> resp.first_choice_text
-
-    To-do:
-
-    Implement delivery of function responses to the LLM, a la
-
-    ```py
-    response_message = response.choices[0].message
-    tool_calls = response_message.tool_calls
-    # Step 2: check if the model wanted to call a function
-    if tool_calls:
-        # Step 3: call the function
-        # Note: the JSON response may not always be valid; be sure to handle errors
-        available_functions = {
-            "get_current_weather": get_current_weather,
-        }  # only one function in this example, but you can have multiple
-        messages.append(response_message)  # extend conversation with assistant's reply
-        # Step 4: send the info for each function call and function response to the model
-        for tool_call in tool_calls:
-            function_name = tool_call.function.name
-            function_to_call = available_functions[function_name]
-            function_args = json.loads(tool_call.function.arguments)
-            function_response = function_to_call(
-                location=function_args.get("location"),
-                unit=function_args.get("unit"),
-            )
-            messages.append(
-                {
-                    "tool_call_id": tool_call.id,
-                    "role": "tool",
-                    "name": function_name,
-                    "content": function_response,
-                }
-            )  # extend conversation with function response
-        second_response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-        )  # get a new response from the model where it can see the function response
-    ```
     '''
-    def __init__(self, base_url=None, default_schema=None, **kwargs):
+    def __init__(self, base_url=None, default_schema=None, flags=DEFAULT_FLAGS, **kwargs):
         '''
         Args:
             base_url (str, optional): Base URL of the API endpoint
                 (should be a MLXStructuredLMServer host, or equiv)
+
+            flags (int, optional): bitwise flags to control tool flow
 
             kwargs (dict, optional): Extra parameters for the API or for the model host
         '''
@@ -96,11 +68,11 @@ class struct_mlx_chat_api:
         # Internal structure to manage these. Key is tool_call_id; value is tuple of callable, kwargs
         self._pending_tool_calls = {}
         self._registered_tools = {}
-        self.tool_role = 'tool'
-        self.tool_role = 'assistant'
+        self.tool_role = 'assistant' if tool_flag.ASSISTANT_RESPONSE in flags else 'tool'
+        self._flags = flags
 
     async def __call__(self, messages, req='chat/completions', schema=None, tools=None, timeout=30.0, apikey=None,
-                         max_trips=10, **kwargs):
+                         max_trips=3, **kwargs):
         '''
         Invoke the LLM with a completion request
 
@@ -135,15 +107,22 @@ class struct_mlx_chat_api:
                 req_data['tool_options'] = tools['tool_options']
             for t in tools['tools']:
                 f = t['function']
-                self.register_tool(f['name'], f['pyfunc'])
+                if 'pyfunc' in f:
+                    self.register_tool(f['name'], f['pyfunc'])
+                else:
+                    warnings.warn('Function called without a definition being provided', stacklevel=2)
 
             # Enter tool-calling sequence
             llm_call_needed = True
             while max_trips > 0 and llm_call_needed:
                 resp = await self.round_trip(req, req_data, timeout, apikey, **kwargs)
+                max_trips -= 1
                 # If LLM has asked for tool calls, prepare to loop back
                 if resp['response_type'] == response_type.TOOL_CALL:
                     # self.update_tool_calls(resp)
+                    if not max_trips:
+                        # If there are no more available trips, don't bother calling the tools
+                        return resp
                     tool_responses = self.execute_tool_calls(resp)
                     for call_id, callee_name, result in tool_responses:
                         if self.tool_role == 'assistant':
@@ -158,18 +137,19 @@ class struct_mlx_chat_api:
                                 'name': callee_name,
                                 'content': str(result),
                             })
-                        # TRY REMOVING THE USED TOOL
-                        remove_list = [
-                            i for (i, t) in enumerate(req_data['tools'])
-                            if t.get('function', {}).get('name') == callee_name]
-                        # print(f'removing tools with index {remove_list} from request structure')
-                        for i in remove_list:
-                            req_data['tools'].pop(i)
-                        if not req_data['tools']:
-                            del req_data['tools']
+                        if tool_flag.REMOVE_USED_TOOLS in self._flags:
+                            # Many FLOSS LLMs get confused if they see a tool definition still in the response back
+                            # And loop back with a new tool request. Remove it to avoid this.
+                            remove_list = [
+                                i for (i, t) in enumerate(req_data['tools'])
+                                if t.get('function', {}).get('name') == callee_name]
+                            # print(f'removing tools with index {remove_list} from request structure')
+                            for i in remove_list:
+                                req_data['tools'].pop(i)
+                            if not req_data['tools']:
+                                del req_data['tools']
                 else:
                     llm_call_needed = False
-                max_trips -= 1
 
             # Loop exited. We have a final response, or exhausted allowed trips
             if max_trips <= 0:

@@ -64,9 +64,12 @@ from toolio.client_helper import struct_mlx_chat_api, response_type
 
 
 @click.command()
-@click.option('--apibase', default='http://127.0.0.1:8000', help='MLXStructuredLMServer (OpenAI API-compatible) server base URL')
-@click.option('--prompt', help='Prompt text; can use {jsonschema} placeholder for the schema')
-@click.option('--prompt-file', type=click.File('r'), help='Prompt text; can use {jsonschema} placeholder for the schema. Overrides --prompt arg')
+@click.option('--apibase', default='http://127.0.0.1:8000',
+    help='MLXStructuredLMServer (OpenAI API-compatible) server base URL')
+@click.option('--prompt',
+    help='Prompt text; can use {jsonschema} placeholder for the schema')
+@click.option('--prompt-file', type=click.File('r'),
+    help='Prompt text; can use {jsonschema} placeholder for the schema. Overrides --prompt arg')
 @click.option('--schema',
     help='JSON schema to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt')
 @click.option('--schema-file', type=click.File('rb'),
@@ -80,13 +83,15 @@ from toolio.client_helper import struct_mlx_chat_api, response_type
 @click.option('--tools-file', type=click.File('rb'),
     help='Path to tools specification based on OpenAI format, to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt. Overrides --tools arg')
 @click.option('--system', help='Optional system prompt')
-@click.option("--max-tokens", type=int, help='Maximum number of tokens to generate')
+@click.option('--max-trips', default='3', type=int,
+    help='Maximum number of times to return to the LLM, presumably with tool results. If there is no final response by the time this is reached, post a message with the remaining unused tool invocations.')
+@click.option("--max-tokens", type=int, help='Maximum number of tokens to generate. Will be applied to each trip.')
 
 @click.option('--toolmod', '-m', multiple=True, help='Python module containing tools; will be imported whether or not tools in this module are specified')
 
 @click.option('--model', type=str, help='Path to locally-hosted MLF format model')
 @click.option('--temp', default='0.1', type=float, help='LLM sampling temperature')
-def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, toolmod, system, max_tokens, model, temp):
+def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, toolmod, system, max_trips, max_tokens, model, temp):
     if prompt_file:
         prompt = prompt_file.read()
     if schema_file:
@@ -107,9 +112,9 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
     #      modobj = importlib.import_module(tm)
 
     llm = struct_mlx_chat_api(base_url=apibase)
-    resp = asyncio.run(llm(prompt_to_chat(prompt, system=system), schema=schema_obj, tools=tools_obj, max_trips=3))
+    resp = asyncio.run(llm(prompt_to_chat(prompt, system=system), schema=schema_obj, tools=tools_obj, max_trips=max_trips))
     if resp['response_type'] == response_type.TOOL_CALL:
-        print('The model has invoked the following tool calls in response to the prompt:')
+        print('The model invoked the following tool calls to complete the response, but there are no permitted trips remaining.')
         tcs = resp['choices'][0]['message']['tool_calls']
         for tc in tcs:
             del tc['function']['arguments']

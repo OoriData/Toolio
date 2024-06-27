@@ -1,9 +1,9 @@
-# mlx_struct_lm_server
+# toolio
 
 from pathlib import Path  # noqa: E402
 
 from ogbujipt import word_loom
-from mlx_struct_lm_server import __about__
+from toolio import __about__
 
 VERSION = __about__.__version__
 
