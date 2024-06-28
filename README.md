@@ -1,10 +1,14 @@
-# Toolio
+![toolio_github_header](https://github.com/OoriData/Toolio/assets/12983495/e6b35d7f-4b37-4f77-8dc5-1bafc8befb86)
+♪ Come along and ride on a fantastic voyage 🎵, with AI in the passenger seat and a flatbed full of tools.
 
-♪Come along and ride on a fantastic voyage🎼, with AI in the passenger seat and a flatbed full of tools.
-
-Toolioo is an OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It's also really useful for more reliable tool calling. It's based on the MLX framework for Apple Silicon (e.g. M1/M2/M3/M4 Macs), so that's the only supported platform at present.
+Toolio is an OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It's also really useful for more reliable tool calling. It's based on the MLX framework for Apple Silicon (e.g. M1/M2/M3/M4 Macs), so that's the only supported platform at present.
 
 Builds on: https://github.com/otriscon/llm-structured-output/
+
+<table><tr>
+  <td><a href="https://oori.dev/"><img src="https://www.oori.dev/assets/branding/oori_Logo_FullColor.png" width="64" /></a></td>
+  <td>Toolio is primarily developed by the crew at <a href="https://oori.dev/">Oori Data</a>. We offer software engineering services around LLM applications.</td>
+</tr></table>
 
 # Running the server
 
