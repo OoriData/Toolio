@@ -55,7 +55,7 @@ The model has invoked the following tool calls in response to the prompt:
 '''
 import json
 import asyncio
-# import importlib
+import importlib
 
 import click
 from ogbujipt.llm_wrapper import prompt_to_chat
@@ -87,11 +87,11 @@ from toolio.client_helper import struct_mlx_chat_api, response_type
     help='Maximum number of times to return to the LLM, presumably with tool results. If there is no final response by the time this is reached, post a message with the remaining unused tool invocations.')
 @click.option("--max-tokens", type=int, help='Maximum number of tokens to generate. Will be applied to each trip.')
 
-@click.option('--toolmod', '-m', multiple=True, help='Python module containing tools; will be imported whether or not tools in this module are specified')
+@click.option('--tool', '-t', multiple=True, help='Full Python attribute path to a Toolio-specific callable to be made available to the LLM')
 
-@click.option('--model', type=str, help='Path to locally-hosted MLF format model')
+@click.option('--model', type=str, help='Path to locally-hosted MLX format model')
 @click.option('--temp', default='0.1', type=float, help='LLM sampling temperature')
-def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, toolmod, system, max_trips, max_tokens, model, temp):
+def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, tool, system, max_trips, max_tokens, model, temp):
     if prompt_file:
         prompt = prompt_file.read()
     if schema_file:
@@ -108,10 +108,13 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
         tools_obj = None
 
     # Import & register any tools
-    # for tm in toolmod:
-    #      modobj = importlib.import_module(tm)
+    tool_callables = []
+    for tpath in tool:
+        modpath, call_name  = tpath.rsplit('.', 1)
+        modobj = importlib.import_module(modpath)
+        tool_callables.append(getattr(modobj, call_name))
 
-    llm = struct_mlx_chat_api(base_url=apibase)
+    llm = struct_mlx_chat_api(base_url=apibase, tools=tool_callables)
     resp = asyncio.run(llm(prompt_to_chat(prompt, system=system), schema=schema_obj, tools=tools_obj, max_trips=max_trips))
     if resp['response_type'] == response_type.TOOL_CALL:
         print('The model invoked the following tool calls to complete the response, but there are no permitted trips remaining.')

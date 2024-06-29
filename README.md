@@ -3,6 +3,8 @@
 
 Toolio is an OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It's also really useful for more reliable tool calling. It's based on the MLX framework for Apple Silicon (e.g. M1/M2/M3/M4 Macs), so that's the only supported platform at present.
 
+Call it tool-calling, function-calling, agentic framework based on schema-driven output, or guided generation, or steered response.
+
 Builds on: https://github.com/otriscon/llm-structured-output/
 
 <table><tr>
@@ -127,6 +129,24 @@ The square root of 256 is 16.
 ```
 
 `math.sqrt` is a convenient, simple example. You can specify any function which can already be imported (Toolio won't install any libraries at run time), and you can use imports and attribute lookups with multiple levels, e.g. `path.to.module_to_import|path.to.function`.
+
+## Libraries of tools (or toolboxes, if you prefer)
+
+The examples above might feel like a bit too much work to use a tool; in particular putting together and sending along the tool-calling spec. In most cases you'll either be reusing tools developed by someone else, or your own special ones. In either case the tool-calling spec for each tool can be bundled for easier use. Toolio comes with a few tools you can use right away, for example. `toolio.tool.math.calculator` is a really simple calculator tool the LLM can use because once again LLMs are really bad at maths. But there's one step required first. Some of the built-in tools use third-party libraries which aren't baseline requirements of Toolio. Install them as follows:
+
+```sh
+pip install -Ur requirements-extra.txt
+```
+
+Now try a prompt intended to use the ccalculator tool.
+
+```sh
+echo 'If I have three mangos and Obi has twice as many bananas, how many fruit items do we have altogether?' > /tmp/llmprompt.txt
+toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tool=toolio.tool.math.calculator
+```
+
+Note: This tool requires an LLM smart enough to correctly construct the right mathematial expression for calculation. Even this is not something you can take for granted, so there's no shortcut from testing and selecting the right agent LLMs.
+
 
 # LLM-specific flows
 

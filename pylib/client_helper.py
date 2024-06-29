@@ -9,7 +9,6 @@ Modeled on ogbujipt.llm_wrapper.openai_api & ogbujipt.llm_wrapper.openai_chat_ap
 import json
 import warnings
 from enum import Flag, auto
-# from dataclasses import dataclass
 import importlib
 
 import httpx
@@ -20,7 +19,7 @@ from amara3 import iri
 from ogbujipt import config
 from ogbujipt.llm_wrapper import llm_response, response_type
 
-HTTP_SUCCESS = 200
+from toolio.util import check_callable
 
 
 class tool_flag(Flag):
@@ -29,6 +28,11 @@ class tool_flag(Flag):
 
 
 DEFAULT_FLAGS = tool_flag.ASSISTANT_RESPONSE | tool_flag.REMOVE_USED_TOOLS
+# Tool choice feels like it could be an enum, but it's not clear that the valus are fixed across conventions
+TOOL_CHOICE_AUTO = 'auto'
+TOOL_CHOICE_NONE = 'none'
+
+HTTP_SUCCESS = 200
 
 
 class struct_mlx_chat_api:
@@ -43,7 +47,7 @@ class struct_mlx_chat_api:
     >>> resp = asyncio.run(llm_api(prompt_to_chat('Knock knock!')))
     >>> resp.first_choice_text
     '''
-    def __init__(self, base_url=None, default_schema=None, flags=DEFAULT_FLAGS, **kwargs):
+    def __init__(self, base_url=None, default_schema=None, flags=DEFAULT_FLAGS, tools=None, **kwargs):
         '''
         Args:
             base_url (str, optional): Base URL of the API endpoint
@@ -53,6 +57,7 @@ class struct_mlx_chat_api:
 
             kwargs (dict, optional): Extra parameters for the API or for the model host
         '''
+        tools = tools or {}
         self.parameters = config.attr_dict(kwargs)
         self.default_schema = default_schema
         self.base_url = base_url
@@ -67,9 +72,12 @@ class struct_mlx_chat_api:
         # OpenAI-style tool-calling LLMs give IDs to tool requests by the LLM
         # Internal structure to manage these. Key is tool_call_id; value is tuple of callable, kwargs
         self._pending_tool_calls = {}
-        self._registered_tools = {}
+        self._registered_tool = {}  # tool_name: tool_obj
+        self._tool_schema_stanzs = []
         self.tool_role = 'assistant' if tool_flag.ASSISTANT_RESPONSE in flags else 'tool'
         self._flags = flags
+        for toolobj in tools:
+            self.register_tool(toolobj.name, toolobj, add_schema=True)
 
     async def __call__(self, messages, req='chat/completions', schema=None, tools=None, timeout=30.0, apikey=None,
                          max_trips=3, **kwargs):
@@ -86,6 +94,7 @@ class struct_mlx_chat_api:
         Returns:
             dict: JSON response from the LLM
         '''
+        tools = tools or {}
         schema = schema or self.default_schema
         schema_str = json.dumps(schema)
 
@@ -99,18 +108,24 @@ class struct_mlx_chat_api:
         if schema:
             req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
             resp = await self.round_trip(req, req_data, timeout, apikey, **kwargs)
-        if tools:
-            req_data['tools'] = tools['tools']
-            if 'tool_choice' in tools:
-                req_data['tool_choice'] = tools['tool_choice']
+
+        if tools or self._tool_schema_stanzs:
+            tools_list = tools.get('tools', [])
+            combined_tools = self._tool_schema_stanzs + tools_list
+            # print(f'{combined_tools=}')
+            # req_data['tools'] = tools['tools']
+            req_data['tool_choice'] = tools.get('tool_choice', TOOL_CHOICE_AUTO)
+            if tools_list and req_data['tool_choice'] == TOOL_CHOICE_NONE:
+                warnings.warn('Tools were provided, but tool_choise was set so they\'ll never be used')
             if 'tool_options' in tools:
                 req_data['tool_options'] = tools['tool_options']
-            for t in tools['tools']:
+            for t in tools_list:
                 f = t['function']
                 if 'pyfunc' in f:
                     self.register_tool(f['name'], f['pyfunc'])
                 else:
-                    warnings.warn('Function called without a definition being provided', stacklevel=2)
+                    warnings.warn('Function called without a definition being provided')
+            req_data['tools'] = combined_tools
 
             # Enter tool-calling sequence
             llm_call_needed = True
@@ -123,7 +138,7 @@ class struct_mlx_chat_api:
                     if not max_trips:
                         # If there are no more available trips, don't bother calling the tools
                         return resp
-                    tool_responses = self.execute_tool_calls(resp)
+                    tool_responses = await self.execute_tool_calls(resp)
                     for call_id, callee_name, result in tool_responses:
                         if self.tool_role == 'assistant':
                             messages.append({
@@ -183,8 +198,8 @@ class struct_mlx_chat_api:
         Given a function/tool name, return the callable which implements it
         '''
         # print('lookup_tool', name)
-        if name in self._registered_tools:
-            return self._registered_tools[name]
+        if name in self._registered_tool:
+            return self._registered_tool[name]
         else:
             # FIXME: i18n
             raise LookupError(f'Unknown tool: {name}')
@@ -197,7 +212,7 @@ class struct_mlx_chat_api:
             tool = self.lookup_tool(callee_name)
             self._pending_tool_calls[tc['id']] = (tool, callee_args)
 
-    def execute_tool_calls(self, response):
+    async def execute_tool_calls(self, response):
         # print('update_tool_calls', response)
         tool_responses = []
         for tc in response['choices'][0].get('message', {}).get('tool_calls'):
@@ -206,12 +221,20 @@ class struct_mlx_chat_api:
             callee_args = tc['function']['arguments_obj']
             tool = self.lookup_tool(callee_name)
             # print(f'Calling tool {callee_name} with args {callee_args}')
+            # FIXME: Parallelize async calls rather than blocking on each
             try:
-                result = tool(**callee_args)
+                is_callable, is_async_callable = check_callable(tool)
+                if is_async_callable:
+                    result = await tool(**callee_args)
+                elif is_callable:
+                    result = tool(**callee_args)
             except TypeError as e:
                 # try for special case where the function takes exactly 1 argument
                 if len(callee_args) == 1 and 'no keyword arguments' in str(e):
-                    result = tool(next(iter(callee_args.values())))
+                    if is_async_callable:
+                        result = await tool(next(iter(callee_args.values())))
+                    elif is_callable:
+                        result = tool(next(iter(callee_args.values())))
                 else:
                     raise
             tool_responses.append((call_id, callee_name, result))
@@ -219,13 +242,20 @@ class struct_mlx_chat_api:
             # self._pending_tool_calls[tc['id']] = (tool, callee_args)
         return tool_responses
 
-    def register_tool(self, name, funcpath):
-        # pyfunc is in the form 'path.to.module_to_import|path.to.function'
-        modpath, funcpath = funcpath.split('|')
-        modobj = importlib.import_module(modpath)
-        parent = modobj
-        for funcname in funcpath.split('.'):
-            parent = getattr(parent, funcname)
-        func = parent
-        assert callable(func)
-        self._registered_tools[name] = func
+    def register_tool(self, name, funcpath_or_obj, add_schema=False):
+        if isinstance(funcpath_or_obj, str):
+            funcpath = funcpath_or_obj
+            # pyfunc is in the form 'path.to.module_to_import|path.to.function'
+            modpath, funcpath = funcpath.split('|')
+            modobj = importlib.import_module(modpath)
+            parent = modobj
+            for funcname in funcpath.split('.'):
+                parent = getattr(parent, funcname)
+            func = parent
+            assert callable(func)
+            self._registered_tool[name] = func
+        else:
+            funcobj = funcpath_or_obj
+            self._registered_tool[name] = funcobj
+            if add_schema:
+                self._tool_schema_stanzs.append(funcobj.schema)

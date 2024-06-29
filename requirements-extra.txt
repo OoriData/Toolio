@@ -1,0 +1,2 @@
+# Extra requirements, largely used to support the built-in slate of tools, which are optional
+google-re2
