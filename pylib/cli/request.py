@@ -53,6 +53,7 @@ The model has invoked the following tool calls in response to the prompt:
 ```
 
 '''
+import sys
 import json
 import asyncio
 import importlib
@@ -60,7 +61,7 @@ import importlib
 import click
 from ogbujipt.llm_wrapper import prompt_to_chat
 
-from toolio.client_helper import struct_mlx_chat_api, response_type
+from toolio.client import struct_mlx_chat_api, response_type
 
 
 @click.command()
@@ -84,14 +85,18 @@ from toolio.client_helper import struct_mlx_chat_api, response_type
     help='Path to tools specification based on OpenAI format, to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt. Overrides --tools arg')
 @click.option('--system', help='Optional system prompt')
 @click.option('--max-trips', default='3', type=int,
-    help='Maximum number of times to return to the LLM, presumably with tool results. If there is no final response by the time this is reached, post a message with the remaining unused tool invocations.')
-@click.option("--max-tokens", type=int, help='Maximum number of tokens to generate. Will be applied to each trip.')
+    help='Maximum number of times to return to the LLM, presumably with tool results. If there is no final response by the time this is reached, post a message with the remaining unused tool invocations')
+@click.option("--max-tokens", type=int, help='Maximum number of tokens to generate. Will be applied to each trip')
 
 @click.option('--tool', '-t', multiple=True, help='Full Python attribute path to a Toolio-specific callable to be made available to the LLM')
 
 @click.option('--model', type=str, help='Path to locally-hosted MLX format model')
 @click.option('--temp', default='0.1', type=float, help='LLM sampling temperature')
-def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, tool, system, max_trips, max_tokens, model, temp):
+
+@click.option('--trace', is_flag=True, default=False,
+              help='Print information (to STDERR) about tool call requests & results. Useful for debugging')
+def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, tool, system, max_trips, max_tokens,
+         model, temp, trace):
     if prompt_file:
         prompt = prompt_file.read()
     if schema_file:
@@ -114,7 +119,7 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
         modobj = importlib.import_module(modpath)
         tool_callables.append(getattr(modobj, call_name))
 
-    llm = struct_mlx_chat_api(base_url=apibase, tools=tool_callables)
+    llm = struct_mlx_chat_api(base_url=apibase, tools=tool_callables, trace=trace)
     resp = asyncio.run(llm(prompt_to_chat(prompt, system=system), schema=schema_obj, tools=tools_obj, max_trips=max_trips))
     if resp['response_type'] == response_type.TOOL_CALL:
         print('The model invoked the following tool calls to complete the response, but there are no permitted trips remaining.')
@@ -123,4 +128,6 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
             del tc['function']['arguments']
         print(json.dumps(tcs, indent=2))
     elif resp['response_type'] == response_type.MESSAGE:
+        if trace:
+            print('Final response:', file=sys.stderr)
         print(resp.first_choice_text)

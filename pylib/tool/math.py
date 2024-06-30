@@ -5,7 +5,7 @@ import re2 as re
 from toolio.tool import tool, param
 
 # Restricted to numbers & arithmetic symbols (& e for exponents, which does open up an infinitesimal attack vector)
-ALLOWED_EXPR_PAT = re.compile(r'[\d\.eE\+\-\*\/^\(\)]*')
+ALLOWED_EXPR_PAT = re.compile(r'[\d\.eE\+\-\*\/^\(\)]+')
 
 # Note: One could implement a more complete calculator such as with SymPy, but there are security implications of that
 # Since it uses eval() under the hood, and it's a terrible idea to eval from sources that are not carefully controlled
@@ -19,7 +19,7 @@ def calculator(expr=None):
     multiplication (*), and division (/). Don't forget to use parenthesis for grouping.
     **Always use this tool for calculations. Never try to do them yourself**.
     '''
-    print(repr(expr))
+    # print(repr(expr))
     if not ALLOWED_EXPR_PAT.match(expr):
         raise ValueError(f'Disallowed characters encountered in mathematical expression {expr}')
     result = eval(expr, {})

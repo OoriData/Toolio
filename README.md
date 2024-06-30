@@ -138,14 +138,35 @@ The examples above might feel like a bit too much work to use a tool; in particu
 pip install -Ur requirements-extra.txt
 ```
 
-Now try a prompt intended to use the ccalculator tool.
+Now try a prompt intended to use the calculator tool. To make sure it does, we'll add the `--trace` flag:
 
 ```sh
-echo 'If I have three mangos and Obi has twice as many bananas, how many fruit items do we have altogether?' > /tmp/llmprompt.txt
-toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tool=toolio.tool.math.calculator
+toolio_request --apibase="http://127.0.0.1:8000" --tool=toolio.tool.math.calculator --trace \
+--prompt='Usain Bolt ran the 100m race in 9.58s. What was his average velocity?' 
 ```
 
-Note: This tool requires an LLM smart enough to correctly construct the right mathematial expression for calculation. Even this is not something you can take for granted, so there's no shortcut from testing and selecting the right agent LLMs.
+Here's what I got from `Hermes-2-Theta-Llama-3-8B-4bit`:
+
+```
+⚙️Calling tool calculator with args {'expr': '100/9.58'}
+⚙️Tool call result: 10.438413361169102
+Final response:
+To calculate Usain Bolt's average velocity, we need to know the distance he covered (100m) and the time it took him to cover that distance (9.58s). 
+
+Average velocity is defined as the total distance traveled divided by the time taken. In this case, the total distance traveled is 100m, and the time taken is 9.58s. 
+
+So, Usain Bolt's average velocity is:
+
+v_avg = distance / time
+v_avg = 100m / 9.58s
+v_avg = 10.438413361169102 m/s
+
+Therefore, Usain Bolt's average velocity during the 100m race was approximately 10.44 m/s.
+```
+
+You can see that the LLM got help by calling the tool to calculate `100/9.58`.
+
+Note: Every tool relies on the agent LLM to correctly construct the tool call call, e.g. settign up the right mathematial expression for the calculator tool. This is not something you can take for granted, so there's no shortcut from testing and selecting the right LLMs.
 
 
 # LLM-specific flows
@@ -154,7 +175,7 @@ LLMs actually get trained for tool calling, and sometimes get trained to expect 
 
 # Python client
 
-You can also query the server from Python code, using `toolio.client_helper.struct_mlx_chat_api`. The command line `pylib/cli/request.py` is just one example of this.
+You can also query the server from Python code, using `toolio.client.struct_mlx_chat_api`. The command line `pylib/cli/request.py` is just one example of this.
 
 # Credits
 
