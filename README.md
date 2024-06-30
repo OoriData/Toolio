@@ -168,6 +168,32 @@ You can see that the LLM got help by calling the tool to calculate `100/9.58`.
 
 Note: Every tool relies on the agent LLM to correctly construct the tool call call, e.g. settign up the right mathematial expression for the calculator tool. This is not something you can take for granted, so there's no shortcut from testing and selecting the right LLMs.
 
+## Multiple tool calls
+
+Here's an example of giving the LLM a tool to get today's date, and another with a database lookup from birthdays to employee names and interests.
+
+```sh
+toolio_request --apibase="http://127.0.0.1:8000" --trace \
+--tool=toolio.tool.demo.birthday_lookup \
+--tool=toolio.tool.demo.today_kfabe \
+--sysprompt='You are a writer who reasons step by step and uses research tools in the correct order before writing' \
+--prompt='Write a nice note for each employee who has a birthday today.'
+```
+
+These are actually contrived, fake tools for demo purposes. `demo.today_kfabe` always gives the date as 1 July 2024, and `demo.birthday_lookup` is a dummy database. Also note the added system prompt to encourag the LLM to use step-by-step reasoning in applying the tools. If your LLM is smart enough enough it would first get the (supposed) date today and then convrt that to a format suitable for the database lookip.
+
+Unfortunately `mlx-community/Hermes-2-Theta-Llama-3-8B-4bit` fumbles this, ignoring the spoon-fed date from the first tool call, and instead grabs an example date mentioned in the tool definition. This results in no birthday lookup results, and the LLM generates no output.
+
+```
+⚙️Calling tool today with args {}
+⚙️Tool call result: 07-01
+⚙️Calling tool birthday_lookup with args {'date': '05-03'}
+⚙️Tool call result: No one has a birthday today
+Final response:
+
+```
+
+It's a good example of how tool-calling can pretty easily go wrong. As LLMs get more and more capable this should become more reliable. It may well be that top-end LLMs such as OpenAI's GPT and Anthropic's Claude would be able to handle this case, but of course you can't run these privately on MLX.
 
 # LLM-specific flows
 

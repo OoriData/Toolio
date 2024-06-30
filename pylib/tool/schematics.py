@@ -18,6 +18,7 @@ class param:
 
 
 def tool(name, desc=None, params=None):
+    params = params or {}
     def tool_dec(func):
         @functools.wraps(func)
         def tool_inner(*args, **kwargs):

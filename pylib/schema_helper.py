@@ -331,11 +331,14 @@ class Model:
             elif generation_result['op'] == "stop":
                 generation_result['token_count'] = token_count
                 generation_result['time_ms'] = generation_time
-                # This is slightly incorrect, because the first token is generated
-                # from the prompt evaluation.
-                generation_result['generation_tps'] = token_count / (
-                    generation_time / 1e3
-                )
+                if generation_time == 0.0:
+                    # Happens, believe it or not
+                    generation_result['generation_tps'] = float('inf')
+                else:
+                    # Slightly incorrect, because the first token is generated from the prompt evaluation
+                    generation_result['generation_tps'] = token_count / (
+                        generation_time / 1e3
+                    )
             yield generation_result
 
 # Removed command line from https://github.com/otriscon/llm-structured-output/blob/main/src/examples/server.py

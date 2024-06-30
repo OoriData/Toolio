@@ -24,8 +24,3 @@ def calculator(expr=None):
         raise ValueError(f'Disallowed characters encountered in mathematical expression {expr}')
     result = eval(expr, {})
     return result
-
-
-# param_name: (type, description, required)
-calculator.params = {'expr': ('number', 'mathematical expression to be computed', True)}
-

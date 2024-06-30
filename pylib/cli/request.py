@@ -83,7 +83,7 @@ from toolio.client import struct_mlx_chat_api, response_type
     help='Tools specification, based on OpenAI format, to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt')
 @click.option('--tools-file', type=click.File('rb'),
     help='Path to tools specification based on OpenAI format, to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt. Overrides --tools arg')
-@click.option('--system', help='Optional system prompt')
+@click.option('--sysprompt', help='Optional system prompt')
 @click.option('--max-trips', default='3', type=int,
     help='Maximum number of times to return to the LLM, presumably with tool results. If there is no final response by the time this is reached, post a message with the remaining unused tool invocations')
 @click.option("--max-tokens", type=int, help='Maximum number of tokens to generate. Will be applied to each trip')
@@ -95,10 +95,12 @@ from toolio.client import struct_mlx_chat_api, response_type
 
 @click.option('--trace', is_flag=True, default=False,
               help='Print information (to STDERR) about tool call requests & results. Useful for debugging')
-def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, tool, system, max_trips, max_tokens,
+def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, tool, sysprompt, max_trips, max_tokens,
          model, temp, trace):
     if prompt_file:
         prompt = prompt_file.read()
+    if not prompt:
+        raise RuntimeError('--prompt or --prompt-file required')
     if schema_file:
         schema_obj = json.load(schema_file)
     elif schema:
@@ -120,7 +122,7 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
         tool_callables.append(getattr(modobj, call_name))
 
     llm = struct_mlx_chat_api(base_url=apibase, tools=tool_callables, trace=trace)
-    resp = asyncio.run(llm(prompt_to_chat(prompt, system=system), schema=schema_obj, tools=tools_obj, max_trips=max_trips))
+    resp = asyncio.run(llm(prompt_to_chat(prompt, system=sysprompt), schema=schema_obj, tools=tools_obj, max_trips=max_trips))
     if resp['response_type'] == response_type.TOOL_CALL:
         print('The model invoked the following tool calls to complete the response, but there are no permitted trips remaining.')
         tcs = resp['choices'][0]['message']['tool_calls']
