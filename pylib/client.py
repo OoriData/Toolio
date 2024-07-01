@@ -99,7 +99,10 @@ class struct_mlx_chat_api:
         Returns:
             dict: JSON response from the LLM
         '''
+        # print(messages, '\n', schema, '\n', tools)  # Uncomment for test case construction
         tools = tools or {}
+        if max_trips < 1:
+            raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
         schema = schema or self.default_schema
         schema_str = json.dumps(schema)
 
@@ -114,7 +117,7 @@ class struct_mlx_chat_api:
             req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
             resp = await self.round_trip(req, req_data, timeout, apikey, **kwargs)
 
-        if tools or self._tool_schema_stanzs:
+        elif tools or self._tool_schema_stanzs:
             tools_list = tools.get('tools', [])
             combined_tools = self._tool_schema_stanzs + tools_list
             # print(f'{combined_tools=}')
@@ -175,6 +178,10 @@ class struct_mlx_chat_api:
             if max_trips <= 0:
                 # FIXME: i18n
                 warnings.warn('Maximum LLM trips exhausted without a final answer')
+
+        else:
+            resp = await self.round_trip(req, req_data, timeout, apikey, **kwargs)
+
         return resp
 
     async def round_trip(self, req, req_data, timeout, apikey, **kwargs):
@@ -191,6 +198,7 @@ class struct_mlx_chat_api:
                 f'{self.base_url}/{req}', json=req_data, headers=header, timeout=timeout)
             if result.status_code == HTTP_SUCCESS:
                 res_json = result.json()
+                # print(res_json)
                 resp_msg = res_json['choices'][0]['message']
                 assert resp_msg['role'] == 'assistant'
                 resp = llm_response.from_openai_chat(res_json)

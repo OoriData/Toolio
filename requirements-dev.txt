@@ -1,0 +1,4 @@
+# Requirements for developers & contributors
+# pytest-mock
+pytest-asyncio
+pytest-httpserver
