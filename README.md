@@ -9,7 +9,7 @@ Builds on: https://github.com/otriscon/llm-structured-output/
 
 <table><tr>
   <td><a href="https://oori.dev/"><img src="https://www.oori.dev/assets/branding/oori_Logo_FullColor.png" width="64" /></a></td>
-  <td>Toolio is primarily developed by the crew at <a href="https://oori.dev/">Oori Data</a>. We offer software engineering services around LLM applications.</td>
+  <td>Toolio is primarily developed by the crew at <a href="https://oori.dev/">Oori Data</a>. We offer data pipelines and software engineering services around AI/LLM applications.</td>
 </tr></table>
 
 # Running the server
