@@ -1,5 +1,5 @@
 ![toolio_github_header](https://github.com/OoriData/Toolio/assets/12983495/e6b35d7f-4b37-4f77-8dc5-1bafc8befb86)
-♪ Come along and ride on a fantastic voyage 🎵, with AI in the passenger seat and a flatbed full of tools.
+♪ Come along and ride on a fantastic voyage 🎵, with AI riding shotgun seat and a flatbed full of tools.
 
 Toolio is an OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It's also really useful for more reliable tool calling. It's based on the MLX framework for Apple Silicon (e.g. M1/M2/M3/M4 Macs), so that's the only supported platform at present.
 
@@ -220,4 +220,4 @@ Apache 2
 
 # Project name
 
-Named after the legend himself. Best don't pretend you don't know Coolio, fool! Popular rapper from Oakland. ♪*Slide slide, but that's the past, I got something brand new for that a@@.*🎼
+Named after the legend himself. Best don't pretend you don't know Coolio, fool! Popular rapper (R.I.P.) from LA. You watched *Cookin' with Coolio*, now it's time to Tool up with Toolio! ♪*Slide slide, but that's the past; I got something brand new for that aßß.*🎼

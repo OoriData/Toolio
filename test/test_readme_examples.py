@@ -15,6 +15,7 @@ CHAT_COMPLETIONS_URL = '/v1/chat/completions'
 # httpserver fixture from pytest_httpserver starts the dummy server
 async def test_number_guess(number_guess_ht, httpserver):
     # Set up dummy server response
+    # See also: https://pytest-httpserver.readthedocs.io/en/latest/api.html
     httpserver.expect_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(number_guess_ht.resp_json)
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))

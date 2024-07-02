@@ -23,6 +23,8 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
+  "mlx",
+  "mlx_lm",
   "llm-structured-output",
   "ogbujipt",
   "fastapi",
