@@ -75,7 +75,7 @@ class struct_mlx_chat_api:
             warnings.warn('base_url not provided, so each invocation will require one', stacklevel=2)
         # OpenAI-style tool-calling LLMs give IDs to tool requests by the LLM
         # Internal structure to manage these. Key is tool_call_id; value is tuple of callable, kwargs
-        self._pending_tool_calls = {}
+        # self._pending_tool_calls = {}
         self._registered_tool = {}  # tool_name: tool_obj
         self._tool_schema_stanzs = []
         self.tool_role = 'assistant' if tool_flag.ASSISTANT_RESPONSE in flags else 'tool'
@@ -99,7 +99,8 @@ class struct_mlx_chat_api:
         Returns:
             dict: JSON response from the LLM
         '''
-        # print(messages, '\n', schema, '\n', tools)  # Uncomment for test case construction
+        # Uncomment for test case construction
+        # print('MESSAGES', messages, '\n', 'SCHEMA', schema, '\n', 'TOOLS', tools)
         tools = tools or {}
         if max_trips < 1:
             raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
@@ -128,16 +129,15 @@ class struct_mlx_chat_api:
             if 'tool_options' in tools:
                 req_data['tool_options'] = tools['tool_options']
             for t in tools_list:
-                f = t['function']
-                if 'pyfunc' in f:
-                    self.register_tool(f['name'], f['pyfunc'])
-                else:
-                    warnings.warn('Function called without a definition being provided')
+                self.register_tool(t['function']['name'], t['function'].get('pyfunc'))
             req_data['tools'] = combined_tools
 
             # Enter tool-calling sequence
             llm_call_needed = True
             while max_trips > 0 and llm_call_needed:
+                # If the tools list is empty (perhaps we removed the last one in a prev loop), omit it entirely
+                if 'tools' in req_data and not req_data['tools']:
+                    del req_data['tools']
                 resp = await self.round_trip(req, req_data, timeout, apikey, **kwargs)
                 max_trips -= 1
                 # If LLM has asked for tool calls, prepare to loop back
@@ -164,13 +164,11 @@ class struct_mlx_chat_api:
                             # Many FLOSS LLMs get confused if they see a tool definition still in the response back
                             # And loop back with a new tool request. Remove it to avoid this.
                             remove_list = [
-                                i for (i, t) in enumerate(req_data['tools'])
+                                i for (i, t) in enumerate(req_data.get('tools', []))
                                 if t.get('function', {}).get('name') == callee_name]
                             # print(f'removing tools with index {remove_list} from request structure')
                             for i in remove_list:
                                 req_data['tools'].pop(i)
-                            if not req_data['tools']:
-                                del req_data['tools']
                 else:
                     llm_call_needed = False
 
@@ -198,7 +196,7 @@ class struct_mlx_chat_api:
                 f'{self.base_url}/{req}', json=req_data, headers=header, timeout=timeout)
             if result.status_code == HTTP_SUCCESS:
                 res_json = result.json()
-                # print(res_json)
+                # print('RESULT_JSON', res_json)
                 resp_msg = res_json['choices'][0]['message']
                 assert resp_msg['role'] == 'assistant'
                 resp = llm_response.from_openai_chat(res_json)
@@ -217,13 +215,13 @@ class struct_mlx_chat_api:
             # FIXME: i18n
             raise LookupError(f'Unknown tool: {name}')
 
-    def update_tool_calls(self, response):
-        # print('update_tool_calls', response)
-        for tc in response['choices'][0].get('message', {}).get('tool_calls'):
-            callee_name = tc['function']['name']
-            callee_args = tc['function']['arguments_obj']
-            tool = self.lookup_tool(callee_name)
-            self._pending_tool_calls[tc['id']] = (tool, callee_args)
+    # def update_tool_calls(self, response):
+    #     # print('update_tool_calls', response)
+    #     for tc in response['choices'][0].get('message', {}).get('tool_calls'):
+    #         callee_name = tc['function']['name']
+    #         callee_args = tc['function']['arguments_obj']
+    #         tool = self.lookup_tool(callee_name)
+    #         self._pending_tool_calls[tc['id']] = (tool, callee_args)
 
     async def execute_tool_calls(self, response):
         # print('update_tool_calls', response)
@@ -233,6 +231,9 @@ class struct_mlx_chat_api:
             callee_name = tc['function']['name']
             callee_args = tc['function']['arguments_obj']
             tool = self.lookup_tool(callee_name)
+            if tool is None:
+                warnings.warn(f'Tool called, but it has no function implementation: {callee_name}')
+                continue
             if self._trace:
                 print(f'⚙️Calling tool {callee_name} with args {callee_args}', file=sys.stderr)
             # FIXME: Parallelize async calls rather than blocking on each
@@ -270,6 +271,9 @@ class struct_mlx_chat_api:
             func = parent
             assert callable(func)
             self._registered_tool[name] = func
+        elif funcpath_or_obj is None:
+            warnings.warn(f'No implementation provided for function: {name}')
+            self._registered_tool[name] = None
         else:
             funcobj = funcpath_or_obj
             self._registered_tool[name] = funcobj
