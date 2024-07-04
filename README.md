@@ -82,7 +82,7 @@ toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.tx
 You can also run tool usage (function-calling) prompts, a key technique in LLM agent frameworks. A schema will automatically be generated from the tool specs
 
 ```sh
-echo 'What'\''s the weather like in Boston today?' > /tmp/llmprompt.txt
+echo 'What'\''s the weather like in Boulder today?' > /tmp/llmprompt.txt
 echo '{"tools": [{"type": "function","function": {"name": "get_current_weather","description": "Get the current weather in a given location","parameters": {"type": "object","properties": {"location": {"type": "string","description": "City and state, e.g. San Francisco, CA"},"unit": {"type": "string","enum": ["℃","℉"]}},"required": ["location"]}}}], "tool_choice": "auto"}' > /tmp/toolspec.json
 toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json --max-trips=1
 ```
@@ -98,7 +98,7 @@ The model invoked the following tool calls to complete the response, but there a
     "function": {
       "name": "get_current_weather",
       "arguments_obj": {
-        "location": "Boston, MA",
+        "location": "Boulder, MA",
         "unit": "\u2109"
       }
     }

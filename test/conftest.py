@@ -60,7 +60,7 @@ def boulder_weather_trip1_ht():
         label='Boulder weather - trip1 (Hermes theta)',
         req_messages=[{'role': 'user', 'content': "What's the weather like in Boulder today?\n"}],
         req_tools={'tools': [{'type': 'function', 'function': {'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'City and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['℃', '℉']}}, 'required': ['location']}}}], 'tool_choice': 'auto'},
-        resp_json={'choices': [{'index': 0, 'message': {'role': 'assistant', 'tool_calls': [{'id': 'call_6107388496_1719881067_0', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': '{"location": "Boston, MA", "unit": "\\u2109"}'}}]}, 'finish_reason': 'tool_calls'}], 'usage': {'completion_tokens': 36, 'prompt_tokens': 185, 'total_tokens': 221}, 'object': 'chat.completion', 'id': 'chatcmpl-6107388496_1719881067', 'created': 1719881067, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'},
+        resp_json={'choices': [{'index': 0, 'message': {'role': 'assistant', 'tool_calls': [{'id': 'call_6107388496_1719881067_0', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': '{"location": "Boulder, MA", "unit": "\\u2109"}'}}]}, 'finish_reason': 'tool_calls'}], 'usage': {'completion_tokens': 36, 'prompt_tokens': 185, 'total_tokens': 221}, 'object': 'chat.completion', 'id': 'chatcmpl-6107388496_1719881067', 'created': 1719881067, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'},
         resp_type=response_type.TOOL_CALL)
 
 
@@ -76,7 +76,6 @@ def square_root_ht():
         intermed_resp_jsons=[{'choices': [{'index': 0, 'message': {'role': 'assistant', 'tool_calls': [{'id': 'call_17495866192_1719891003_0', 'type': 'function', 'function': {'name': 'square_root', 'arguments': '{"square": 256}'}}]}, 'finish_reason': 'tool_calls'}], 'usage': {'completion_tokens': 16, 'prompt_tokens': 157, 'total_tokens': 173}, 'object': 'chat.completion', 'id': 'chatcmpl-17495866192_1719891003', 'created': 1719891003, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'}],
          resp_text='The square root of 256 is 16.',
         resp_type=response_type.MESSAGE)
-
 
 
 # @pytest.fixture()

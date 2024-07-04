@@ -1,57 +1,6 @@
 # toolio.cli.request
 '''
-Sample of a very simple data extraction use-case
-
-…and yes, in practice a smaller, specialized entity extraction model might be better for this
-
-```sh
-export LMPROMPT='Which countries are mentioned in the sentence "Uche went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}'
-export LMSCHEMA='{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}'
-toolio_request --apibase="http://127.0.0.1:8000" --prompt=$LMPROMPT --schema=$LMSCHEMA --max-tokens 1000
-```
-
-With any decent LLM you should get the following **and no extraneous text cluttering things up!**
-
-```json
-[{"name": "Nigeria", "continent": "Africa"}]
-```
-
-Or if you have the prompt or schema written to files:
-
-```sh
-echo 'Which countries are ementioned in the sentence "Uche went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}' > /tmp/llmprompt.txt
-echo '{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}' > /tmp/countries.schema.json
-toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --schema-file=/tmp/countries.schema.json --max-tokens 1000
-```
-
-You can also try tool usage (function-calling) prompts. A schema will automatically be generated from the tool specs
-
-```sh
-echo 'What'\''s the weather like in Boston today?' > /tmp/llmprompt.txt
-echo '{"tools": [{"type": "function","function": {"name": "get_current_weather","description": "Get the current weather in a given location","parameters": {"type": "object","properties": {"location": {"type": "string","description": "City and state, e.g. San Francisco, CA"},"unit": {"type": "string","enum": ["℃","℉"]}},"required": ["location"]}}}], "tool_choice": "auto"}' > /tmp/toolspec.json
-toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json --max-tokens 1000
-```
-
-You can expect a response such as
-
-```json
-The model has invoked the following tool calls in response to the prompt:
-[
-  {
-    "id": "call_17705268944_1719102607_0",
-    "type": "function",
-    "function": {
-      "name": "get_current_weather",
-      "arguments": "{\"location\": \"Boston, MA\", \"unit\": \"\\u2109\"}",
-      "arguments_obj": {
-        "location": "Boston, MA",
-        "unit": "\u2109"
-      }
-    }
-  }
-]
-```
-
+Toolio client convenient CLI tool
 '''
 import sys
 import json
