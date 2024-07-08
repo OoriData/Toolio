@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-present Oori Data <info@oori.dev>
+#
+# SPDX-License-Identifier: Apache-2.0
 # toolio.cli.server
 '''
 LLM server with OpenAI-like API, for structured prompting support & including function/tool calling
@@ -30,6 +33,7 @@ from llm_structured_output.util.output import info, warning, debug
 
 from toolio import LANG
 from toolio.schema_helper import Model
+from toolio.llm_helper import model_flag, DEFAULT_FLAGS, FLAGS_LOOKUP
 
 
 app_params = {}
@@ -42,12 +46,14 @@ async def lifespan(app: FastAPI):
     Load model one-time
     '''
     # Startup code here. Particularly persistence, so that its DB connection pool is set up in the right event loop
-    info('Loading model...')
+    info(f'Loading model ({app_params["model"]})…')
     app.state.model = Model()
     app.state.params = app_params
     # Can use click's env support if we decide we want this
     # model_path = os.environ['MODEL_PATH']
     app.state.model.load(app_params['model'])
+    # XXX: alternat ID option is app.state.model.model.model_type which is a string, e.g. 'gemma2'
+    app.state.model_flags = FLAGS_LOOKUP.get(app.state.model.model.__class__, DEFAULT_FLAGS)
     yield
     # Shutdown code here, if any
 
@@ -222,13 +228,18 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
                 model_name, functions, is_legacy_function_call
             )
         if not (req_data.tool_options and req_data.tool_options.no_prompt_steering):
-            messages.insert(
-                0,
-                V1ChatMessage(
-                    role='system',
-                    content=responder.tool_prompt,
-                ),
-            )
+            role = 'user' if model_flag.NO_SYSTEM_ROLE in app.state.model_flags else 'system'
+            if role == 'user' and model_flag.USER_ASSISTANT_ALT in app.state.model_flags:
+                messages[0].content = messages[0].content=responder.tool_prompt + '\n\n' + messages[0].content,
+            else:
+                messages.insert(
+                    0,
+                    V1ChatMessage(
+                        role=role,
+                        content=responder.tool_prompt,
+                    ),
+                )
+            print(messages)
         schema = responder.schema
     else:
         if req_data.stream:

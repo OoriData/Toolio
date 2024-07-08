@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-present Oori Data <info@oori.dev>
+#
+# SPDX-License-Identifier: Apache-2.0
 # toolio.schema_helper
 '''
 JSON schema decoding with MLX
@@ -287,8 +290,6 @@ class Model:
             mx.random.seed(seed)
 
         start_time = time.time_ns()
-        print('GRIPPO!', prompt)
-        print('-'*100)
         prompt_tokens = self.tokenizer.encode_prompt(prompt)
         logits, cache = self._evaluate_prompt(
             prompt_tokens, self._cached_prompt, self._cached_cache
