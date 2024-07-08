@@ -16,7 +16,8 @@ class model_flag(Flag):
     USER_ASSISTANT_ALT = auto()  # Model requires alternation of message roles user/assistant only
 
 
-DEFAULT_FLAGS = 0
+DEFAULT_FLAGS = model_flag(0)
+
 
 # {model_class: flags}, defaults to DEFAULT_FLAGS
 FLAGS_LOOKUP = {
