@@ -131,7 +131,7 @@ class V1ResponseFormat(BaseModel):
     type: V1ResponseFormatType
     # schema is our addition, not an OpenAI API parameter
     # Avoid shadowing BaseModel.schema
-    json_schema: str = Field(alias='schema')
+    json_schema: Optional[str] = Field(default=None, alias='schema')
 
 
 class V1StreamOptions(BaseModel):
