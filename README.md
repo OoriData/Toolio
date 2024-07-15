@@ -3,7 +3,7 @@
 
 Toolio is an OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It's also really useful for more reliable tool calling. Toolio is based on the MLX framework for Apple Silicon (e.g. M1/M2/M3/M4 Macs), so that's the only supported platform at present.
 
-Call it tool-calling, function-calling, agentic framework based on schema-driven output, or guided generation, or steered response.
+Call it tool-calling or function-calling, or agentic workflows based on schema-driven output, or guided generation, or steered response.
 
 Builds on: https://github.com/otriscon/llm-structured-output/
 
@@ -58,7 +58,7 @@ cURL is a pretty raw interface for this, though. For example, you have to parse 
 ```sh
 export LMPROMPT='Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}'
 export LMSCHEMA='{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}'
-toolio_request --apibase="http://127.0.0.1:8000" --prompt=$LMPROMPT --schema=$LMSCHEMA
+toolio_request --apibase="http://localhost:8000" --prompt=$LMPROMPT --schema=$LMSCHEMA
 ```
 
 (…and yes, in practice a smaller, specialized entity extraction model might be a better option for a case this simple)
@@ -74,7 +74,7 @@ Or if you have the prompt or schema written to files:
 ```sh
 echo 'Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}' > /tmp/llmprompt.txt
 echo '{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}' > /tmp/countries.schema.json
-toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --schema-file=/tmp/countries.schema.json
+toolio_request --apibase="http://localhost:8000" --prompt-file=/tmp/llmprompt.txt --schema-file=/tmp/countries.schema.json
 ```
 
 ## Tool calling
@@ -84,7 +84,7 @@ You can also run tool usage (function-calling) prompts, a key technique in LLM a
 ```sh
 echo 'What'\''s the weather like in Boulder today?' > /tmp/llmprompt.txt
 echo '{"tools": [{"type": "function","function": {"name": "get_current_weather","description": "Get the current weather in a given location","parameters": {"type": "object","properties": {"location": {"type": "string","description": "City and state, e.g. San Francisco, CA"},"unit": {"type": "string","enum": ["℃","℉"]}},"required": ["location"]}}}], "tool_choice": "auto"}' > /tmp/toolspec.json
-toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json --max-trips=1
+toolio_request --apibase="http://localhost:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json --max-trips=1
 ```
 
 You can expect a response such as
@@ -117,7 +117,7 @@ It's pretty well known at this point that LLMs are bad at maths, but we can give
 ```sh
 echo 'What is the square root of 256?' > /tmp/llmprompt.txt
 echo '{"tools": [{"type": "function","function": {"name": "square_root","description": "Get the square root of the given number","parameters": {"type": "object", "properties": {"square": {"type": "number", "description": "Number from which to find the square root"}},"required": ["square"]},"pyfunc": "math|sqrt"}}], "tool_choice": "auto"}' > /tmp/toolspec.json
-toolio_request --apibase="http://127.0.0.1:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json
+toolio_request --apibase="http://localhost:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json
 ```
 
 We give the LLM a Python function for getting a square root. The OpenAI-style tool spec is extended with `"pyfunc": "math|sqrt"`. This tells Toolio to import the Python built-in `math` model and call the `sqrt` function within it.
@@ -141,7 +141,7 @@ pip install -Ur requirements-extra.txt
 Now try a prompt intended to use the calculator tool. To make sure it does, we'll add the `--trace` flag:
 
 ```sh
-toolio_request --apibase="http://127.0.0.1:8000" --tool=toolio.tool.math.calculator --trace \
+toolio_request --apibase="http://localhost:8000" --tool=toolio.tool.math.calculator --trace \
 --prompt='Usain Bolt ran the 100m race in 9.58s. What was his average velocity?' 
 ```
 
@@ -173,7 +173,7 @@ Note: Every tool relies on the agent LLM to correctly construct the tool call ca
 Here's an example of giving the LLM a tool to get today's date, and another with a database lookup from birthdays to employee names and interests.
 
 ```sh
-toolio_request --apibase="http://127.0.0.1:8000" --trace \
+toolio_request --apibase="http://localhost:8000" --trace \
 --tool=toolio.tool.demo.birthday_lookup \
 --tool=toolio.tool.demo.today_kfabe \
 --sysprompt='You are a writer who reasons step by step and uses research tools in the correct order before writing' \
@@ -207,7 +207,35 @@ For notes on more models see https://github.com/OoriData/Toolio/wiki/Notes-on-ho
 
 # Python client
 
-You can also query the server from Python code, using `toolio.client.struct_mlx_chat_api`. The command line `pylib/cli/request.py` is just one example of this.
+You can also query the server from Python code, using `toolio.client.struct_mlx_chat_api`. Here's an example, including a (dummied up) custom tool:
+
+```py
+import asyncio
+
+from ogbujipt.llm_wrapper import openai_chat_api, prompt_to_chat
+
+from toolio.client import struct_mlx_chat_api
+from toolio.tool import tool, param
+
+@tool('currency_exchange', params=[param('from', str, 'Currency to be converted from, e.g. USD, GBP, JPY', True, rename='from_'), param('to', str, 'Currency to be converted to, e.g. USD, GBP, JPY', True), param('amount', str, 'Amount to convert from one currency to another. Just a number, with no other symbols', True)])
+def currency_exchange(from_=None, to=None, amount=None):
+    '''
+    '''
+    print(f'{from_=}, {to=}, {amount=}')
+    # Look up the conversion online here
+    return 12.34
+
+prompt = 'I need to import a car from Japan. It costs 5 million Yen.'
+'How much must I withdraw from my US bank account'
+tool_callables = [currency_exchange]
+llm = struct_mlx_chat_api(base_url='http://localhost:8000', tools=tool_callables, trace=True)
+resp = asyncio.run(llm(prompt_to_chat(prompt), timeout=60))
+print(resp.first_choice_text)
+```
+
+Notice the use of the `rename` parameter metadata. In Python the param name we've asked the LLM to use, `from`, is a keyword, so to avoid confusion the actual function definition uses `from_`, and the `rename` instructs Toolio to make that change in the background.
+
+You might study the command line `pylib/cli/request.py` for further insight.
 
 # Credits
 
@@ -218,6 +246,12 @@ You can also query the server from Python code, using `toolio.client.struct_mlx_
 
 Apache 2
 
+# Nearby projects
+
+* [Instructor](https://github.com/jxnl/instructor) - LLM structured output via prompt engineering rather than steered sampling.
+* [Outlines](https://github.com/outlines-dev/outlines) - Structured Text Generation vis Pydantic, JSON schema or EBNF. Seems to be sampling control.
+
+
 # Project name
 
-Named after the legend himself. Best don't pretend you don't know Coolio, fool! Popular rapper (R.I.P.) from LA. You watched *Cookin' with Coolio*, now it's time to Tool up with Toolio! ♪*Slide slide, but that's the past; I got something brand new for that aßß.*🎼
+Named after the legend himself. Best don't pretend you don't know Coolio, fool! Popular rapper (R.I.P.) from LA. You watched *Cookin' with Coolio*, now it's time to Tool up with Toolio! ♪*Slide slide, but that's the past; I got something brand new for that aß.*🎼

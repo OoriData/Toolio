@@ -7,6 +7,17 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
+## [0.3.0] - 20240715
+
+### Added
+
+- A couple of test cases
+- tool/param.rename, e.g. for tool params which are Python keywords or reserved words
+
+### Fixed
+
+- Excessive restrictions in OpenAI API
+
 ## [0.2.0] - 20240702
 
 ### Added

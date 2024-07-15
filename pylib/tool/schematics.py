@@ -18,17 +18,14 @@ class param:
     typ: str
     desc: str
     required: bool = False
+    rename: str = None
 
 
 def tool(name, desc=None, params=None):
     params = params or {}
     def tool_dec(func):
-        @functools.wraps(func)
-        def tool_inner(*args, **kwargs):
-            # If any invoke-time setup code is required, here it goes
-            value = func(*args, **kwargs)
-            return value
         schema_params = {}
+        renames = {}
         required_list = []
         for p in params:
             # Translate type designation to JSON Schema, if need be
@@ -36,6 +33,8 @@ def tool(name, desc=None, params=None):
             schema_params[p.name] = {'type': typ, 'description': p.desc}
             if p.required:
                 required_list.append(p.name)
+            if p.rename:
+                renames[p.name] = p.rename
         # Description can come from the docstring, or be overridden by kwarg
         _desc = desc or textwrap.dedent(func.__doc__)
         
@@ -46,6 +45,13 @@ def tool(name, desc=None, params=None):
                 'description': _desc,
                 'parameters': {'type': 'object', 'properties': schema_params, 'required': required_list}}
             }
+
+        @functools.wraps(func)
+        def tool_inner(*args, **kwargs):
+            # If any invoke-time setup code is required, here it goes
+            kwargs = {renames.get(p.name, p.name): p.rename for p in params}
+            value = func(*args, **kwargs)
+            return value
         tool_inner.schema = schema
         tool_inner.name = name
         return tool_inner

@@ -65,7 +65,7 @@ app = FastAPI(lifespan=lifespan)
 # pylint: disable-next=unused-argument
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     exc_str = f'{exc}'
-    warning(f'RequestValidationError: {exc_str}')
+    warning(f'RequestValidationError: {exc_str}. Request: {await request.json()!r}')
     content = {'status_code': 10422, 'message': exc_str, 'data': None}
     return JSONResponse(
         content=content, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
@@ -140,7 +140,7 @@ class V1StreamOptions(BaseModel):
 
 class V1ChatCompletionsRequest(BaseModel):
     # pylint: disable=too-many-instance-attributes # Paternalistic excess
-    model: str = 'default'
+    model: str | None = None
     max_tokens: int = 1000
     temperature: float = 0.0
     messages: List[V1ChatMessage]
