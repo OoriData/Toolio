@@ -12,6 +12,10 @@ Builds on: https://github.com/otriscon/llm-structured-output/
   <td>Toolio is primarily developed by the crew at <a href="https://oori.dev/">Oori Data</a>. We offer data pipelines and software engineering services around AI/LLM applications.</td>
 </tr></table>
 
+"Toolio in 10 minutes" is an easy way to learn about the project.
+
+<iframe width="560" height="315" src="https://www.youtube.com/embed/9DpQYbteakc?si=Zy4Cj1v1q9ID07eg" title="Toolio in 10 minutes - YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
 # Running the server
 
 `toolio_server` is a FastAPI program that you can use to host MLX-format LLMs for structured output query, for example, if you are on  you can use the MLX format LLM model `mlx-community/Hermes-2-Theta-Llama-3-8B-4bit` as follows (from the cloned directory of this repository):
