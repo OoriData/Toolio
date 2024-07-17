@@ -229,13 +229,15 @@ from ogbujipt.llm_wrapper import openai_chat_api, prompt_to_chat
 from toolio.client import struct_mlx_chat_api
 from toolio.tool import tool, param
 
-@tool('currency_exchange', params=[param('from', str, 'Currency to be converted from, e.g. USD, GBP, JPY', True, rename='from_'), param('to', str, 'Currency to be converted to, e.g. USD, GBP, JPY', True), param('amount', str, 'Amount to convert from one currency to another. Just a number, with no other symbols', True)])
+@tool('currency_exchange', params=[param('from', str, 'Currency to be converted from, e.g. USD, GBP, JPY', True, rename='from_'), param('to', str, 'Currency to be converted to, e.g. USD, GBP, JPY', True), param('amount', float, 'Amount to convert from one currency to another. Just a number, with no other symbols', True)])
 def currency_exchange(from_=None, to=None, amount=None):
-    '''
-    '''
-    print(f'{from_=}, {to=}, {amount=}')
+    'Tool to convert one currency to another'
+    # Just a dummy implementation
+    lookup = {('JPY', 'USD'): 1234.56}
+    rate = lookup.get((from_, to))
+    print(f'{from_=}, {to=}, {amount=}, {rate=}')
     # Look up the conversion online here
-    return 12.34
+    return rate * amount
 
 prompt = 'I need to import a car from Japan. It costs 5 million Yen.'
 'How much must I withdraw from my US bank account'

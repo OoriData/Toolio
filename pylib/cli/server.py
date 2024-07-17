@@ -52,7 +52,8 @@ async def lifespan(app: FastAPI):
     # Can use click's env support if we decide we want this
     # model_path = os.environ['MODEL_PATH']
     app.state.model.load(app_params['model'])
-    # XXX: alternat ID option is app.state.model.model.model_type which is a string, e.g. 'gemma2'
+    # XXX: alternate ID option is app.state.model.model.model_type which is a string, e.g. 'gemma2'
+    # print(app.state.model.model.__class__, app.state.model.model.model_type)
     app.state.model_flags = FLAGS_LOOKUP.get(app.state.model.model.__class__, DEFAULT_FLAGS)
     yield
     # Shutdown code here, if any

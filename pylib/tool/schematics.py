@@ -22,15 +22,17 @@ class param:
 
 
 def tool(name, desc=None, params=None):
-    params = params or {}
+    params = params or []
     def tool_dec(func):
         schema_params = {}
+        params_lookup = {}
         renames = {}
         required_list = []
         for p in params:
             # Translate type designation to JSON Schema, if need be
             typ = TYPES_LOOKUP.get(p.typ, p.typ)
             schema_params[p.name] = {'type': typ, 'description': p.desc}
+            params_lookup[p.name] = p
             if p.required:
                 required_list.append(p.name)
             if p.rename:
@@ -48,9 +50,12 @@ def tool(name, desc=None, params=None):
 
         @functools.wraps(func)
         def tool_inner(*args, **kwargs):
-            # If any invoke-time setup code is required, here it goes
-            kwargs = {renames.get(p.name, p.name): p.rename for p in params}
-            value = func(*args, **kwargs)
+            # Invoke-time setup code
+            processed_kwargs = {}
+            for (k, v) in kwargs.items():
+                typ = params_lookup[k].typ
+                processed_kwargs[renames.get(k, k)] = typ(v)
+            value = func(*args, **processed_kwargs)
             return value
         tool_inner.schema = schema
         tool_inner.name = name
