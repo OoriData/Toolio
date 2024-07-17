@@ -12,13 +12,19 @@ Builds on: https://github.com/otriscon/llm-structured-output/
   <td>Toolio is primarily developed by the crew at <a href="https://oori.dev/">Oori Data</a>. We offer data pipelines and software engineering services around AI/LLM applications.</td>
 </tr></table>
 
-"Toolio in 10 minutes" is an easy way to learn about the project.
+The following video, "Toolio in 10 minutes", is an easy way to learn about the project.
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/9DpQYbteakc?si=Zy4Cj1v1q9ID07eg" title="Toolio in 10 minutes - YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+[![Toolio in 10 minutes](https://github.com/user-attachments/assets/fc8dda94-326d-426e-a566-ac8ec60be31f)](https://youtu.be/9DpQYbteakc)
 
-# Running the server
+<!--
+<iframe width="560" height="315" src="https://www.youtube.com/embed/9DpQYbteakc?si=Zy4Cj1v1q9ID07eg" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
+<img width="1268" alt="Toolio in 10 minutes still" src="https://github.com/user-attachments/assets/fc8dda94-326d-426e-a566-ac8ec60be31f">
+-->
 
 `toolio_server` is a FastAPI program that you can use to host MLX-format LLMs for structured output query, for example, if you are on  you can use the MLX format LLM model `mlx-community/Hermes-2-Theta-Llama-3-8B-4bit` as follows (from the cloned directory of this repository):
+
+# Installing
 
 ```sh
 pip install -U .
@@ -28,6 +34,8 @@ toolio_server --model=mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
 This will download the model (a little over 4GB) to your local HuggingFace disk cache, and running it will take up about that much of your unified RAM.
 
 For more on the MLX framework for ML workloads (including LLMs) on Apple Silicon, see the [MLX Notes](https://github.com/uogbuji/mlx-notes) article series. The "Day One" article provides all the context you need for using local LLMs through this project.
+
+# Running the server
 
 Try out a basic request:
 
