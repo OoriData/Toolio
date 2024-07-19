@@ -87,13 +87,15 @@ class struct_mlx_chat_api:
         for toolobj in tools:
             self.register_tool(toolobj.name, toolobj, add_schema=True)
 
-    async def __call__(self, messages, req='chat/completions', schema=None, tools=None, timeout=30.0, apikey=None,
-                         max_trips=3, **kwargs):
+    async def __call__(self, messages, req='chat/completions', schema=None, tools=None, apikey=None,
+                         max_trips=3, trip_timeout=90.0, **kwargs):
         '''
         Invoke the LLM with a completion request
 
         Args:
-            messages (str): Prompt in the form of list of messages to send ot the LLM for completion
+            messages (str) - Prompt in the form of list of messages to send ot the LLM for completion
+
+            trip_timeout (float) - timeout (in seconds) per LLM API request trip; defaults to 90s
 
             kwargs (dict, optional): Extra parameters to pass to the model via API.
                 See Completions.create in OpenAI API, but in short, these:
@@ -119,7 +121,7 @@ class struct_mlx_chat_api:
         req_data = {'messages': messages, **kwargs}
         if schema:
             req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
-            resp = await self.round_trip(req, req_data, timeout, apikey, **kwargs)
+            resp = await self.round_trip(req, req_data, trip_timeout, apikey, **kwargs)
 
         elif tools or self._tool_schema_stanzs:
             tools_list = tools.get('tools', [])
@@ -141,7 +143,7 @@ class struct_mlx_chat_api:
                 # If the tools list is empty (perhaps we removed the last one in a prev loop), omit it entirely
                 if 'tools' in req_data and not req_data['tools']:
                     del req_data['tools']
-                resp = await self.round_trip(req, req_data, timeout, apikey, **kwargs)
+                resp = await self.round_trip(req, req_data, trip_timeout, apikey, **kwargs)
                 max_trips -= 1
                 # If LLM has asked for tool calls, prepare to loop back
                 if resp['response_type'] == response_type.TOOL_CALL:
@@ -181,7 +183,7 @@ class struct_mlx_chat_api:
                 warnings.warn('Maximum LLM trips exhausted without a final answer')
 
         else:
-            resp = await self.round_trip(req, req_data, timeout, apikey, **kwargs)
+            resp = await self.round_trip(req, req_data, trip_timeout, apikey, **kwargs)
 
         return resp
 

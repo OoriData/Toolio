@@ -23,4 +23,5 @@ DEFAULT_FLAGS = model_flag(0)
 FLAGS_LOOKUP = {
     gemma.Model: model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT,
     gemma2.Model: model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT,
+    mixtral.Model: model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT,
 }

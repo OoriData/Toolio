@@ -47,13 +47,16 @@ async def lifespan(app: FastAPI):
     '''
     # Startup code here. Particularly persistence, so that its DB connection pool is set up in the right event loop
     info(f'Loading model ({app_params["model"]})…')
+    tstart = time.perf_counter_ns()
     app.state.model = Model()
     app.state.params = app_params
     # Can use click's env support if we decide we want this
     # model_path = os.environ['MODEL_PATH']
     app.state.model.load(app_params['model'])
+    tdone = time.perf_counter_ns()
     # XXX: alternate ID option is app.state.model.model.model_type which is a string, e.g. 'gemma2'
     # print(app.state.model.model.__class__, app.state.model.model.model_type)
+    info(f'Model loaded in {(tdone - tstart)/1000000000.0:.3f}s. Type: {app.state.model.model.model_type}')
     app.state.model_flags = FLAGS_LOOKUP.get(app.state.model.model.__class__, DEFAULT_FLAGS)
     yield
     # Shutdown code here, if any
@@ -230,8 +233,9 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
             )
         if not (req_data.tool_options and req_data.tool_options.no_prompt_steering):
             role = 'user' if model_flag.NO_SYSTEM_ROLE in app.state.model_flags else 'system'
+            # print(role, model_flag.USER_ASSISTANT_ALT in app.state.model_flags, app.state.model_flags)
             if role == 'user' and model_flag.USER_ASSISTANT_ALT in app.state.model_flags:
-                messages[0].content = messages[0].content=responder.tool_prompt + '\n\n' + messages[0].content,
+                messages[0].content = messages[0].content=responder.tool_prompt + '\n\n' + messages[0].content
             else:
                 messages.insert(
                     0,
@@ -240,7 +244,6 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
                         content=responder.tool_prompt,
                     ),
                 )
-            print(messages)
         schema = responder.schema
     else:
         if req_data.stream:
@@ -255,6 +258,7 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
             else:
                 schema = {'type': 'object'}
 
+    # import pprint; pprint.pprint(messages)
     if schema is None:
         debug('Warning: no JSON schema provided. Generating without one.')
     else:

@@ -243,7 +243,7 @@ prompt = 'I need to import a car from Japan. It costs 5 million Yen.'
 'How much must I withdraw from my US bank account'
 tool_callables = [currency_exchange]
 llm = struct_mlx_chat_api(base_url='http://localhost:8000', tools=tool_callables, trace=True)
-resp = asyncio.run(llm(prompt_to_chat(prompt), timeout=60))
+resp = asyncio.run(llm(prompt_to_chat(prompt), trip_timeout=60))
 print(resp.first_choice_text)
 ```
 

@@ -16,7 +16,6 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 - Type coercion for tool parameters
 - Ability to rename params in for tools
 - Three test cases, including currency conversion
-- More OpenAI API accommodation. Add ability…
 
 ### Fixed
 
