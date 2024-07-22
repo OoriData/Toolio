@@ -387,17 +387,21 @@ class ReusableKVCache(KVCache):
         (Just a tiny change in the line that determines the shape)
         '''
         prev = self.offset
-        if prev % self.step == 0:
+        if self.keys is None or (prev + keys.shape[2]) > self.keys.shape[2]:
             n_steps = (self.step + keys.shape[2] - 1) // self.step
-            shape = (keys.shape[0], self.n_kv_heads, n_steps * self.step, self.head_dim)
-            new_k = mx.zeros(shape, keys.dtype)
-            new_v = mx.zeros(shape, values.dtype)
+            k_shape = (keys.shape[0], self.n_kv_heads, n_steps * self.step, self.k_head_dim)
+            v_shape = (keys.shape[0], self.n_kv_heads, n_steps * self.step, self.v_head_dim)
+            new_k = mx.zeros(k_shape, keys.dtype)
+            new_v = mx.zeros(v_shape, values.dtype)
             if self.keys is not None:
+                if self.keys is None or (prev + keys.shape[2]) > self.keys.shape[2]:
+                    self.keys = self.keys[..., :prev, :]
+                    self.values = self.values[..., :prev, :]
                 self.keys = mx.concatenate([self.keys, new_k], axis=2)
                 self.values = mx.concatenate([self.values, new_v], axis=2)
             else:
                 self.keys, self.values = new_k, new_v
-    
+
         self.offset += keys.shape[2]
         self.keys[..., prev : self.offset, :] = keys
         self.values[..., prev : self.offset, :] = values
