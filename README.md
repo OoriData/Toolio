@@ -102,6 +102,7 @@ toolio_request --apibase="http://localhost:8000" --prompt-file=/tmp/llmprompt.tx
 You can expect a response such as
 
 ```json
+[...] UserWarning: No implementation provided for function: get_current_weather
 The model invoked the following tool calls to complete the response, but there are no permitted trips remaining.
 [
   {
