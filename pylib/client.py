@@ -240,7 +240,7 @@ class struct_mlx_chat_api:
                 warnings.warn(f'Tool called, but it has no function implementation: {callee_name}')
                 continue
             if self._trace:
-                print(f'⚙️Calling tool {callee_name} with args {callee_args}', file=sys.stderr)
+                print(f'⚙️ Calling tool {callee_name} with args {callee_args}', file=sys.stderr)
             # FIXME: Parallelize async calls rather than blocking on each
             try:
                 is_callable, is_async_callable = check_callable(tool)
@@ -258,7 +258,7 @@ class struct_mlx_chat_api:
                 else:
                     raise
             if self._trace:
-                print(f'⚙️Tool call result: {result}', file=sys.stderr)
+                print(f'⚙️ Tool call result: {result}', file=sys.stderr)
             tool_responses.append((call_id, callee_name, result))
             # print('Tool result:', result)
             # self._pending_tool_calls[tc['id']] = (tool, callee_args)

@@ -7,6 +7,22 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
+## [0.3.1] - 20240722
+
+### Added
+
+- `trip_timeout` command line option for `toolio_request`
+- Support for mixtral model type
+- Model loading timing
+
+### Fixed
+
+- [AttributeError: 'ReusableKVCache' object has no attribute 'head_dim'](https://github.com/OoriData/Toolio/issues/10)
+
+### Changed
+
+- `timeout` client param to `trip_timeout`
+
 ## [0.3.0] - 20240717
 
 ### Added
