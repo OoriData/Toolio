@@ -83,9 +83,11 @@ class Model:
             for layer_cache in cache:
                 layer_cache.reuse(len(prompt), i)
             tokens = prompt[i:]
+            # print('CACHED', tokens, prompt, i)
         else:
             cache = ReusableKVCache.for_model(self.model)
             tokens = prompt
+            # print('UNCACHED', tokens)
 
         logits = self.model(mx.array(tokens)[None], cache)
         return logits, cache
@@ -375,9 +377,10 @@ class ReusableKVCache(KVCache):
         current_size = self.keys.shape[2]
         if current_size < new_prompt_length:
             n_steps = (self.step + new_prompt_length - 1) // self.step
-            add_shape = (1, self.n_kv_heads, n_steps * self.step - current_size, self.head_dim)
-            k_zeros = mx.zeros(add_shape, self.keys.dtype)
-            v_zeros = mx.zeros(add_shape, self.values.dtype)
+            k_add_shape = (1, self.n_kv_heads, n_steps * self.step - current_size, self.k_head_dim)
+            v_add_shape = (1, self.n_kv_heads, n_steps * self.step - current_size, self.v_head_dim)
+            k_zeros = mx.zeros(k_add_shape, self.keys.dtype)
+            v_zeros = mx.zeros(v_add_shape, self.values.dtype)
             self.keys = mx.concatenate([self.keys, k_zeros], axis=2)
             self.values = mx.concatenate([self.values, v_zeros], axis=2)
 
