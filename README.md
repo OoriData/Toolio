@@ -24,7 +24,7 @@ The following video, "Toolio in 10 minutes", is an easy way to learn about the p
 
 `toolio_server` is a FastAPI program that you can use to host MLX-format LLMs for structured output query, for example, if you are on  you can use the MLX format LLM model `mlx-community/Hermes-2-Theta-Llama-3-8B-4bit` as follows (from the cloned directory of this repository):
 
-# Installing
+# Installation and Setup
 
 ```sh
 pip install -U .
@@ -35,7 +35,7 @@ This will download the model (a little over 4GB) to your local HuggingFace disk 
 
 For more on the MLX framework for ML workloads (including LLMs) on Apple Silicon, see the [MLX Notes](https://github.com/uogbuji/mlx-notes) article series. The "Day One" article provides all the context you need for using local LLMs through this project.
 
-# Running the server
+# cURLing the Toolio server
 
 Try out a basic request:
 
@@ -63,7 +63,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
    }'
 ```
 
-# Using the command line client
+# Using the command line client instead
 
 cURL is a pretty raw interface for this, though. For example, you have to parse the resulting response JSON. It's a lot easier to use the more specialized command line client tool `toolio_request`. An example of a very simple data extraction use-case:
 
@@ -102,6 +102,7 @@ toolio_request --apibase="http://localhost:8000" --prompt-file=/tmp/llmprompt.tx
 You can expect a response such as
 
 ```json
+[...] UserWarning: No implementation provided for function: get_current_weather
 The model invoked the following tool calls to complete the response, but there are no permitted trips remaining.
 [
   {
