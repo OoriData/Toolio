@@ -26,7 +26,7 @@ dependencies = [
   "mlx>=0.16.0",
   "mlx_lm>=0.16.0",
   "llm-structured-output",
-  "ogbujipt",
+  "ogbujipt>=0.9.3",
   "fastapi",
   "click",
   "httpx",
