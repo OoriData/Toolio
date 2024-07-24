@@ -7,11 +7,12 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
-## [0.3.2] - 20240723
+## [0.3.2] - 20240724
 
 ### Added
 
 - `toolio.responder` module, with coherent factoring from `server.py`
+- `llm_helper.model_manager` convenience API for direct Python loading & inferencing over models
 - `llm_helper.extract_content` helper to simplify the OpenAI-style streaming completion responses
 - `test/quick_check.py` for quick assessment of LLMs in Toolio
 

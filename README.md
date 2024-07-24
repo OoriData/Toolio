@@ -218,7 +218,7 @@ LLMs actually get trained for tool calling, and sometimes get trained to expect 
 
 For notes on more models see https://github.com/OoriData/Toolio/wiki/Notes-on-how-MLX-models-handle-tool%E2%80%90calling
 
-# Python client
+# Python HTTP client
 
 You can also query the server from Python code, using `toolio.client.struct_mlx_chat_api`. Here's an example, including a (dummied up) custom tool:
 
@@ -250,7 +250,100 @@ print(resp.first_choice_text)
 
 Notice the use of the `rename` parameter metadata. In Python the param name we've asked the LLM to use, `from`, is a keyword, so to avoid confusion the actual function definition uses `from_`, and the `rename` instructs Toolio to make that change in the background.
 
+You can also define asynchronous tools, e.g. `async def currency_exchange`, which I would actually recommend if, e.g. you are truly web scraping.
+
 You might study the command line `pylib/cli/request.py` for further insight.
+
+# Direct usage via Python
+
+You can also, of course, just load the model and run inference on it without bothering with HTTP client/server. The `model_manager` class is a convenient interface for this.
+
+```py
+import asyncio
+from toolio.llm_helper import model_manager, extract_content
+
+toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+
+async def say_hello(tmm):
+    msgs = [{"role": "user", "content": "Hello! How are you?"}]
+    async for chunk in extract_content(tmm.chat_complete(msgs)):
+        print(chunk, end='')
+
+asyncio.run(say_hello(toolio_mm))
+```
+
+You should just get a simple text response from the LLm printed to the screen.
+
+You can also do this via synchronous API, but I highly recommend leaing hard on the async habit.
+
+The `chat_complete` method also takes a list of tools or a JSON schema, as well as some model parameters.
+
+## LLM response metadata
+
+Toolio uses OpenAI API conventions a lot under the hood. If you run the following:
+
+```py
+import asyncio
+from toolio.llm_helper import model_manager, extract_content
+
+toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+
+async def say_hello(tmm):
+    msgs = [{"role": "user", "content": "Hello! How are you?"}]
+    async for chunk_struct in tmm.chat_complete(msgs):
+        print(chunk_struct)
+        break
+
+asyncio.run(say_hello(toolio_mm))
+```
+
+You should see something like:
+
+```py
+{'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': 'Hi'}, 'finish_reason': None}], 'object': 'chat.completion.chunk', 'id': 'chatcmpl-17588006160_1721823730', 'created': 1721823730, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'}
+```
+
+The LLM response is delivered in such structures ("deltas") as they're generated. `chunk_struct['choices'][0]['delta']['content']` is a bit of the actual text we teased out in the previous snippet. `chunk_struct['choices'][0]['finish_reason']` is `None` because it's not yet finished, etc. This is based on OpenAI API.
+
+`extract_content`, used in the previous snippet, is a very simple coroutine that extracts the actual text content from this series of response structures.
+
+The final chunk would look something like this:
+
+```py
+{'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': 'stop'}], 'usage': {'completion_tokens': 20, 'prompt_tokens': 12, 'total_tokens': 32}, 'object': 'chat.completion.chunk', 'id': 'chatcmpl-18503717840_1721824385', 'created': 1721824385, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'}
+```
+
+Notice there is more information, now that it's finished (`'finish_reason': 'stop'`). Say you want the metadata such as the number of tokens generated:
+
+```py
+import asyncio
+from itertools import tee
+from toolio.llm_helper import model_manager, extract_content
+
+toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+
+async def say_hello(tmm):
+    msgs = [{"role": "user", "content": "Hello! How are you?"}]
+    async for chunk in tmm.chat_complete(msgs):
+        content = chunk['choices'][0]['delta']['content']
+        if content is not None:
+            print(content, end='')
+
+    # Final chunk has the stats
+    print('\n', '-'*80, '\n', 'Number of tokens generated:', chunk['usage']['total_tokens'])
+
+asyncio.run(say_hello(toolio_mm))
+```
+
+You'll get something like:
+
+```
+*waves* Hi there! I'm doing well, thank you for asking. How about you?
+ -------------------------------------------------------------------------------- 
+ Number of tokens generated: 32
+```
+
+Tip: don't forget all the various, useful bits to be found in `itertools` and the like.
 
 # Credits
 
