@@ -6,7 +6,7 @@
 import json
 from enum import Flag, auto
 
-import mlx.core as mx
+# import mlx.core as mx
 from mlx_lm.models import (gemma, gemma2, llama, phi, qwen, su_rope, minicpm, phi3, qwen2, gpt2,
                            mixtral, phi3small, qwen2_moe, cohere, gpt_bigcode, phixtral,
                            stablelm, dbrx, internlm2, openelm, plamo, starcoder2)
@@ -40,9 +40,9 @@ class model_manager:
         self.model = Model()
         self.model.load(model_path)
 
-
-    async def chat_complete(self, messages, functions=None, stream=True, json_response=None, json_schema=None,
+    async def chat_complete(self, messages, functions=None, stream=True, json_response=False, json_schema=None,
                             max_tokens=128, temperature=0.1):
+        schema = None
         if functions:
             if stream:
                 responder = ToolCallStreamingResponder(self.model_path, functions, self.model)
@@ -86,3 +86,11 @@ class model_manager:
             else:
                 raise RuntimeError(f'Unknown resule operation {result["op"]}')
 
+
+async def extract_content(resp_stream):
+    # Interpretthe streaming pattern from the API. viz https://platform.openai.com/docs/api-reference/streaming
+    async for chunk in resp_stream:
+        # Minimal checking: Trust the delivered structure
+        content = chunk['choices'][0]['delta']['content']
+        if content is not None:
+            yield content

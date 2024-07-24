@@ -7,6 +7,23 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
+## [0.3.2] - 20240723
+
+### Added
+
+- `toolio.responder` module, with coherent factoring from `server.py`
+- `llm_helper.extract_content` helper to simplify the OpenAI-style streaming completion responses
+- `test/quick_check.py` for quick assessment of LLMs in Toolio
+
+### Changed
+
+- Turn off prompt caching until we figure out [#12](https://github.com/OoriData/Toolio/issues/12)
+- Have responders return actual dicts, rather than label + JSON dump
+
+### Fixed
+
+- More vector shape mamagement
+
 ## [0.3.1] - 20240722
 
 ### Added

@@ -18,7 +18,7 @@ from toolio.client import struct_mlx_chat_api, response_type
 
 @click.command()
 @click.option('--apibase', default='http://127.0.0.1:8000',
-    help='MLXStructuredLMServer (OpenAI API-compatible) server base URL')
+    help='toolio_server (OpenAI API-compatible) server base URL')
 @click.option('--prompt',
     help='Prompt text; can use {jsonschema} placeholder for the schema')
 @click.option('--prompt-file', type=click.File('r'),

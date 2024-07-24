@@ -85,7 +85,8 @@ class ChatCompletionStreamingResponder(ChatCompletionResponder):
             'choices': [{'index': 0, 'delta': delta, 'finish_reason': None}],
             **self.message_properties(),
         }
-        return f'data: {json.dumps(message)}\n'
+        return message
+        # return f'data: {json.dumps(message)}\n'
 
     def generation_stopped(
         self,
@@ -103,7 +104,8 @@ class ChatCompletionStreamingResponder(ChatCompletionResponder):
             **self.format_usage(prompt_tokens, completion_tokens),
             **self.message_properties(),
         }
-        return f'data: {json.dumps(message)}\ndata: [DONE]\n'
+        return message
+        # return f'data: {json.dumps(message)}\ndata: [DONE]\n'
 
 
 class ToolCallResponder(ChatCompletionResponder):
@@ -331,7 +333,8 @@ class ToolCallStreamingResponder(ToolCallResponder):
             'choices': [{'index': 0, 'delta': delta, 'finish_reason': None}],
             **self.message_properties(),
         }
-        return f'data: {json.dumps(message)}\n'
+        return message
+        # return f'data: {json.dumps(message)}\n'
 
     def generation_stopped(
         self,
@@ -350,5 +353,5 @@ class ToolCallStreamingResponder(ToolCallResponder):
             **self.format_usage(prompt_tokens, completion_tokens),
             **self.message_properties(),
         }
-        return f'data: {json.dumps(message)}\ndata: [DONE]\n'
-
+        return message
+        # return f'data: {json.dumps(message)}\ndata: [DONE]\n'
