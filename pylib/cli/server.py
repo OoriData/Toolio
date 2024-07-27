@@ -188,6 +188,7 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
     # Extract valid functions from the req_data.
     functions = []
     is_legacy_function_call = False
+    # print(req_data)
     if req_data.tool_choice == 'none':
         pass
     elif req_data.tools is None:
@@ -203,18 +204,6 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
                 and tool.function.name == req_data.function_call.name
             )
         ]
-    elif req_data.function_call == 'none':
-        pass
-    elif req_data.function_call == 'auto':
-        functions = req_data.functions
-        is_legacy_function_call = True
-    elif req_data.function_call is not None:
-        functions = [
-            next(
-                fn for fn in req_data.functions if fn.name == req_data.function_call.name
-            )
-        ]
-        is_legacy_function_call = True
 
     model_name = app.state.params['model']
     schema = None
@@ -222,16 +211,9 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
         # If the req_data includes functions, create a system prompt to instruct the LLM
         # to use tools, and assemble a JSON schema to steer the LLM output.
         if req_data.stream:
-            responder = ToolCallStreamingResponder(
-                model_name,
-                functions,
-                is_legacy_function_call,
-                app.state.model,
-            )
+            responder = ToolCallStreamingResponder(model_name, functions, app.state.model)
         else:
-            responder = ToolCallResponder(
-                model_name, functions, is_legacy_function_call
-            )
+            responder = ToolCallResponder(model_name, functions)
         if not (req_data.tool_options and req_data.tool_options.no_prompt_steering):
             role = 'user' if model_flag.NO_SYSTEM_ROLE in app.state.model_flags else 'system'
             # print(role, model_flag.USER_ASSISTANT_ALT in app.state.model_flags, app.state.model_flags)

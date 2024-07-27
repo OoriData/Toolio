@@ -113,17 +113,19 @@ class ToolCallResponder(ChatCompletionResponder):
     For notes on OpenAI-style tool calling:
     https://platform.openai.com/docs/guides/function-calling?lang=python
 
-    > The basic sequence of steps for function calling is as follows:
+    > Basic sequence of steps for function calling:
     > 1. Call the model with the user query and a set of functions defined in the functions parameter.
     > 2. The model can choose to call one or more functions; if so, the content will be a stringified JSON object adhering to your custom schema (note: the model may hallucinate parameters).
     > 3. Parse the string into JSON in your code, and call your function with the provided arguments if they exist.
     > 4. Call the model again by appending the function response as a new message, and let the model summarize the results back to the user.
     '''
     def __init__(
-        self, model_name: str, functions: list[dict], is_legacy_function_call: bool
+        self, model_name: str, functions: list[dict]  # , is_legacy_function_call: bool
     ):
         super().__init__(model_name)
 
+        # XXX: Can we just remove legacy OpenAI API support?
+        is_legacy_function_call = False
         self.is_legacy_function_call = is_legacy_function_call
 
         function_schemas = [
@@ -233,10 +235,13 @@ class ToolCallStreamingResponder(ToolCallResponder):
         self,
         model_name: str,
         functions: list[dict],
-        is_legacy_function_call: bool,
+        # is_legacy_function_call: bool,
         model,
     ):
-        super().__init__(model_name, functions, is_legacy_function_call)
+        # XXX: Can we just remove legacy OpenAI API support?
+        is_legacy_function_call = False
+        # super().__init__(model_name, functions, is_legacy_function_call)
+        super().__init__(model_name, functions)
         self.object_type = 'chat.completion.chunk'
 
         # We need to parse the output as it's being generated in order to send

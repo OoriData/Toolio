@@ -345,6 +345,29 @@ You'll get something like:
 
 Tip: don't forget all the various, useful bits to be found in `itertools` and the like.
 
+# Structured LLM responses via direct API
+
+As mentioned, you can specify tools and schemata.
+
+```py
+import asyncio
+from itertools import tee
+from toolio.llm_helper import model_manager, extract_content
+
+toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+
+async def say_hello(tmm):
+    prompt = ('Which countries are mentioned in the sentence \'Adamma went home to Nigeria for the hols\'?'
+              'Your answer should be only JSON, according to this schema: {json_schema}')
+    schema = ('{"type": "array", "items":'
+              '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}')
+    msgs = [{'role': 'user', 'content': prompt.format(json_schema=schema)}]
+    async for chunk in extract_content(tmm.chat_complete(msgs, json_schema=schema)):
+        print(chunk, end='')
+
+asyncio.run(say_hello(toolio_mm))
+```
+
 # Credits
 
 * otriscon's [llm-structured-output](https://github.com/otriscon/llm-structured-output/) is the foundation of this package
@@ -359,6 +382,11 @@ Apache 2
 * [Instructor](https://github.com/jxnl/instructor) - LLM structured output via prompt engineering rather than steered sampling.
 * [Outlines](https://github.com/outlines-dev/outlines) - Structured Text Generation vis Pydantic, JSON schema or EBNF. Seems to be sampling control.
 
+# Why this, anyway?
+
+In our thinking, and that of many others working in the space for a while, agent/tool systems are where GenAI are most likely to deliver practical value. Watch out, though, because McKinsey has seen fit to apply their $1,000/hr opinions along the same lines. ["Why agents are the next frontier of generative AI"](https://www.mckinsey.com/capabilities/mckinsey-digital/our-insights/why-agents-are-the-next-frontier-of-generative-ai?cid=soc-web) (July 2024)
+
+[Parrot/Gorilla cartoon here]
 
 # Project name
 

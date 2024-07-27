@@ -1,3 +1,7 @@
+'''
+python test/quick_check.py mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
+'''
+
 import sys
 import asyncio
 
@@ -13,7 +17,7 @@ async def amain(mm):
         ]
     async for chunk in extract_content(mm.chat_complete(msgs)):
         print(chunk, end='')
-    
+
     print('='*80)
 
     prompt = ('Which countries are mentioned in the sentence \'Adamma went home to Nigeria for the hols\'?'
@@ -21,10 +25,34 @@ async def amain(mm):
     schema = ('{"type": "array", "items":'
               '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}')
     msgs = [
-        {'role': 'user', 'content': prompt}
+        {'role': 'user', 'content': prompt.format(json_schema=schema)}
         ]
     async for chunk in extract_content(mm.chat_complete(msgs, json_schema=schema)):
         print(chunk, end='')
+
+    print('='*80)
+
+    prompt = 'What is the square root of 256?'
+    tools = ('{"tools": [{"type": "function", "function":'
+              '{"name": "square_root","description": "Get the square root of the given number",'
+              '"parameters": {"type": "object", "properties": {"square": {"type": "number",'
+              '"description": "Number from which to find the square root"}},'
+              '"required": ["square"]},"pyfunc": "math|sqrt"}}], "tool_choice": "auto"}')
+    msgs = [
+        {'role': 'user', 'content': prompt}
+        ]
+    async for chunk in mm.chat_complete(msgs):
+        content = chunk['choices'][0]['delta']['content']
+        if content is not None:
+            print(content, end='')
+
+    # Final chunk has the stats
+    print('\n', '-'*80, chunk)
+
+    async for chunk in extract_content(mm.chat_complete(msgs, tools=tools)):
+        print(chunk, end='')
+
+    print('='*80)
 
     # mm.chat_complete(msgs, functions=None, stream=True, json_response=None, json_schema=None,
     #                         max_tokens=128, temperature=0.1)

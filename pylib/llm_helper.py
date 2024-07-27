@@ -40,14 +40,14 @@ class model_manager:
         self.model = Model()
         self.model.load(model_path)
 
-    async def chat_complete(self, messages, functions=None, stream=True, json_response=False, json_schema=None,
+    async def chat_complete(self, messages, tools=None, stream=True, json_response=False, json_schema=None,
                             max_tokens=128, temperature=0.1):
         schema = None
-        if functions:
+        if tools:
             if stream:
-                responder = ToolCallStreamingResponder(self.model_path, functions, self.model)
+                responder = ToolCallStreamingResponder(self.model_path, tools, self.model)
             else:
-                responder = ToolCallResponder(self.model_path, functions)
+                responder = ToolCallResponder(self.model_path, tools)
             schema = responder.schema
         else:
             # Regular LLM completion; no steering
