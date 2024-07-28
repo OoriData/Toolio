@@ -10,6 +10,7 @@ import json
 import time
 
 from toolio import LANG, TOOLIO_MODEL_TYPE_FIELD
+from toolio.http_schematics import V1Function
 
 
 class ChatCompletionResponder:
@@ -120,17 +121,15 @@ class ToolCallResponder(ChatCompletionResponder):
     '''
     def __init__(self, model_name: str, model_type: str, tools: list[dict], sysmsg_leadin: str | None = None):
         super().__init__(model_name, model_type)
-
-        # XXX: Can we just remove legacy OpenAI API support?
-        self.is_legacy_function_call = False
         self.sysmsg_leadin = sysmsg_leadin
 
+        tools = [ (t.dictify() if isinstance(t, V1Function) else t) for t in tools ]
         function_schemas = [
             {
                 'type': 'object',
                 'properties': {
-                    'name': {'type': 'const', 'const': fn.name},
-                    'arguments': fn.parameters,
+                    'name': {'type': 'const', 'const': fn['name']},
+                    'arguments': fn['parameters'],
                 },
                 'required': ['name', 'arguments'],
             }
@@ -139,17 +138,12 @@ class ToolCallResponder(ChatCompletionResponder):
         if len(function_schemas) == 1:
             self.schema = function_schemas[0]
             self.tool_prompt = self._one_tool_prompt(tools[0], function_schemas[0])
-        elif self.is_legacy_function_call:  # Only allows one function to be called.
-            self.schema = {'oneOf': function_schemas}
-            self.tool_prompt = self._select_tool_prompt(tools, function_schemas)
         else:
             self.schema = {'type': 'array', 'items': {'anyOf': function_schemas}}
             self.tool_prompt = self._multiple_tool_prompt(tools, function_schemas)
 
     def translate_reason(self, reason):
         if reason == 'end':
-            if self.is_legacy_function_call:
-                return 'function_call'
             return 'tool_calls'
         return super().translate_reason(reason)
 
@@ -201,7 +195,7 @@ class ToolCallResponder(ChatCompletionResponder):
     def _one_tool_prompt(self, tool, tool_schema):
         leadin = self.sysmsg_leadin or LANG['one_tool_prompt_leadin']
         return f'''
-{leadin} {tool.name}: {tool.description}
+{leadin} {tool["name"]}: {tool["description"]}
 {LANG["one_tool_prompt_schemalabel"]}: {json.dumps(tool_schema)}
 {LANG["one_tool_prompt_tail"]}
 '''
@@ -209,7 +203,7 @@ class ToolCallResponder(ChatCompletionResponder):
     def _multiple_tool_prompt(self, tools, tool_schemas, separator='\n', leadin=None):
         leadin = self.sysmsg_leadin or LANG['multi_tool_prompt_leadin']
         toollist = separator.join(
-            [f'\nTool {tool.name}: {tool.description}\nInvocation schema: {json.dumps(tool_schema)}\n'
+            [f'\nTool {tool["name"]}: {tool["description"]}\nInvocation schema: {json.dumps(tool_schema)}\n'
                 for tool, tool_schema in zip(tools, tool_schemas) ])
         return f'''
 {leadin}
@@ -220,7 +214,7 @@ class ToolCallResponder(ChatCompletionResponder):
     def _select_tool_prompt(self, tools, tool_schemas, separator='\n', leadin=None):
         leadin = self.sysmsg_leadin or LANG['multi_tool_prompt_leadin']
         toollist = separator.join(
-            [f'\n{LANG["select_tool_prompt_toollabel"]} {tool.name}: {tool.description}\n'
+            [f'\n{LANG["select_tool_prompt_toollabel"]} {tool["name"]}: {tool["description"]}\n'
              f'{LANG["select_tool_prompt_schemalabel"]}: {json.dumps(tool_schema)}\n'
                 for tool, tool_schema in zip(tools, tool_schemas) ])
         return f'''
@@ -231,10 +225,8 @@ class ToolCallResponder(ChatCompletionResponder):
 
 
 class ToolCallStreamingResponder(ToolCallResponder):
-    def __init__(self, model_name: str, model_type: str, tools: list[dict], model, sysmsg_leadin: str | None = None):
-        # XXX: Can we just remove legacy OpenAI API support?
-        is_legacy_function_call = False
-        # super().__init__(model_name, tools, is_legacy_function_call)
+    def __init__(self, model, model_name: str, tools: list[dict], sysmsg_leadin: str | None = None):
+        model_type = model.model.model_type
         super().__init__(model_name, model_type, tools, sysmsg_leadin)
         self.object_type = 'chat.completion.chunk'
 
@@ -256,19 +248,20 @@ class ToolCallStreamingResponder(ToolCallResponder):
         def end_function_arguments(_prop_name: str, _prop_value: str):
             self.in_function_arguments = False
 
+        tools = ( (t.dictify() if isinstance(t, V1Function) else t) for t in tools )
         hooked_function_schemas = [
             {
                 'type': 'object',
                 'properties': {
                     'name': {
                         'type': 'const',
-                        'const': fn.name,
+                        'const': fn['name'],
                         '__hooks': {
                             'value_end': set_function_name,
                         },
                     },
                     'arguments': {
-                        **fn.parameters,
+                        **fn["parameters"],
                         '__hooks': {
                             'value_start': start_function_arguments,
                             'value_end': end_function_arguments,
@@ -281,8 +274,6 @@ class ToolCallStreamingResponder(ToolCallResponder):
         ]
         if len(hooked_function_schemas) == 1:
             hooked_schema = hooked_function_schemas[0]
-        elif is_legacy_function_call:
-            hooked_schema = {'oneOf': hooked_function_schemas}
         else:
             hooked_schema = {
                 'type': 'array',
@@ -303,31 +294,23 @@ class ToolCallStreamingResponder(ToolCallResponder):
         if not argument_text:
             return None
         assert self.current_function_name
-        if self.is_legacy_function_call:
-            delta = {
-                'function_call': {
-                    'name': self.current_function_name,
-                    'arguments': argument_text,
+        delta = {
+            'tool_calls': [
+                {
+                    'index': self.current_function_index,
+                    'id': f'call_{self.id}_{self.current_function_index}',
+                    'type': 'function',
+                    'function': {
+                        # We send the name on every update, but OpenAI only sends it on
+                        # the first one for each call, with empty arguments (''). Further
+                        # updates only have the arguments field. This is something we may
+                        # want to emulate if client code depends on this behavior.
+                        'name': self.current_function_name,
+                        'arguments': argument_text,
+                    },
                 }
-            }
-        else:
-            delta = {
-                'tool_calls': [
-                    {
-                        'index': self.current_function_index,
-                        'id': f'call_{self.id}_{self.current_function_index}',
-                        'type': 'function',
-                        'function': {
-                            # We send the name on every update, but OpenAI only sends it on
-                            # the first one for each call, with empty arguments (''). Further
-                            # updates only have the arguments field. This is something we may
-                            # want to emulate if client code depends on this behavior.
-                            'name': self.current_function_name,
-                            'arguments': argument_text,
-                        },
-                    }
-                ]
-            }
+            ]
+        }
         message = {
             'choices': [{'index': 0, 'delta': delta, 'finish_reason': None}],
             **self.message_properties(),

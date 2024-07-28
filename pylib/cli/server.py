@@ -105,7 +105,6 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
 
     # Extract valid functions from the req_data.
     functions = []
-    # is_legacy_function_call = False
     # print(req_data)
     if req_data.tool_choice == 'none':
         pass

@@ -26,6 +26,9 @@ class V1Function(BaseModel):
     description: str = ''
     parameters: dict = {}
 
+    def dictify(self):
+        return {'name': self.name, 'description': self.description, 'parameters': self.parameters}
+
 
 class V1ToolFunction(BaseModel):
     type: Literal['function']

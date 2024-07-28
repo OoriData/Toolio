@@ -7,7 +7,7 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
-## [0.3.2] - 20240724
+## [0.4.0] - 20240724
 
 ### Added
 
@@ -15,15 +15,22 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 - `llm_helper.model_manager` convenience API for direct Python loading & inferencing over models
 - `llm_helper.extract_content` helper to simplify the OpenAI-style streaming completion responses
 - `test/quick_check.py` for quick assessment of LLMs in Toolio
+- Mistral model type support
 
 ### Changed
 
 - Turn off prompt caching until we figure out [#12](https://github.com/OoriData/Toolio/issues/12)
 - Have responders return actual dicts, rather than label + JSON dump
+- Factor out HTTP protocol schematics to a new module
+- Handle more nuances of tool-calling tokenizer setup
 
 ### Fixed
 
 - More vector shape mamagement
+
+### Removed
+
+- Legacy OpenAI-style function-calling support
 
 ## [0.3.1] - 20240722
 

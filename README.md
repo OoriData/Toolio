@@ -368,6 +368,28 @@ async def say_hello(tmm):
 asyncio.run(say_hello(toolio_mm))
 ```
 
+## Example of tool use
+
+```py
+import asyncio
+from itertools import tee
+from toolio.llm_helper import model_manager, extract_content
+
+toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+
+
+async def say_hello(tmm):
+    msgs = [ {'role': 'user', 'content': 'What is the square root of 256?'} ]
+    tools = [{'name': 'square_root', 'description': 'Get the square root of the given number',
+             'parameters': {'type': 'object', 'properties': {'square': {'type': 'number',
+             'description': 'Number from which to find the square root'}}, 'required': ['square']}}]
+    async for chunk in extract_content(tmm.chat_complete(msgs, tools=tools)):
+        print(chunk, end='')
+
+asyncio.run(say_hello(toolio_mm))
+```
+
+
 # Credits
 
 * otriscon's [llm-structured-output](https://github.com/otriscon/llm-structured-output/) is the foundation of this package

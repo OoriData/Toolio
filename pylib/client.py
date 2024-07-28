@@ -153,9 +153,9 @@ class struct_mlx_chat_api:
                         return resp
                     tool_responses = await self.execute_tool_calls(resp)
                     for call_id, callee_name, result in tool_responses:
-                        model_type = resp[TOOLIO_MODEL_TYPE_FIELD]
+                        model_type = resp.get(TOOLIO_MODEL_TYPE_FIELD)
                         model_flags = FLAGS_LOOKUP.get(model_type, DEFAULT_MODEL_FLAGS)
-                        print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
+                        # print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
                         if not model_flags:
                             warnings.warn(f'Unknown model type {model_type} specified by server. Likely client/server version skew')
                         # FIXME: Separate out natural language

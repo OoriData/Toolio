@@ -39,26 +39,34 @@ FLAGS_LOOKUP = {
 
 
 class model_manager:
-    def __init__(self, model_path):
+    def __init__(self, model_path, sysmsg_leadin=None):
+        '''
+        For client-side loading of MLX LLM models in Toolio
+
+        model_path - local or HuggingFace path to model
+        sysmsg_leadin - Override the system message used to prime the model for tool-calling
+        '''
         self.model_path = model_path
         self.model = Model()
         self.model.load(model_path)
+        self.model_type = self.model.model.model_type
+        self.sysmsg_leadin = sysmsg_leadin
 
     async def chat_complete(self, messages, tools=None, stream=True, json_response=False, json_schema=None,
-                            max_tokens=128, temperature=0.1):
+                            tool_choice=None, max_tokens=128, temperature=0.1):
         schema = None
         if tools:
             if stream:
-                responder = ToolCallStreamingResponder(self.model_path, tools, self.model)
+                responder = ToolCallStreamingResponder(self.model, self.model_path, tools, self.sysmsg_leadin)
             else:
-                responder = ToolCallResponder(self.model_path, tools)
+                responder = ToolCallResponder(self.model_path, self.model_type, tools, self.sysmsg_leadin)
             schema = responder.schema
         else:
             # Regular LLM completion; no steering
             if stream:
-                responder = ChatCompletionStreamingResponder(self.model_path)
+                responder = ChatCompletionStreamingResponder(self.model_path, self.model_type)
             else:
-                responder = ChatCompletionResponder(self.model_path)
+                responder = ChatCompletionResponder(self.model_path, self.model_type)
             if json_response:
                 if json_schema:
                     schema = json.loads(json_schema)
@@ -95,7 +103,7 @@ async def extract_content(resp_stream):
     # Interpretthe streaming pattern from the API. viz https://platform.openai.com/docs/api-reference/streaming
     async for chunk in resp_stream:
         # Minimal checking: Trust the delivered structure
-        content = chunk['choices'][0]['delta']['content']
+        content = chunk['choices'][0]['delta'].get('content')
         if content is not None:
             yield content
 

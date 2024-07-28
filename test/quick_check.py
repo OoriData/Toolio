@@ -7,6 +7,7 @@ import asyncio
 
 import click
 
+from toolio.http_schematics import V1Function
 from toolio.llm_helper import model_manager, extract_content
 
 async def amain(mm):
@@ -33,11 +34,8 @@ async def amain(mm):
     print('='*80)
 
     prompt = 'What is the square root of 256?'
-    tools = ('{"tools": [{"type": "function", "function":'
-              '{"name": "square_root","description": "Get the square root of the given number",'
-              '"parameters": {"type": "object", "properties": {"square": {"type": "number",'
-              '"description": "Number from which to find the square root"}},'
-              '"required": ["square"]},"pyfunc": "math|sqrt"}}], "tool_choice": "auto"}')
+    # Plain dictionary form
+    tools = [{'name': 'square_root', 'description': 'Get the square root of the given number', 'parameters': {'type': 'object', 'properties': {'square': {'type': 'number', 'description': 'Number from which to find the square root'}}, 'required': ['square']}}]
     msgs = [
         {'role': 'user', 'content': prompt}
         ]
@@ -49,7 +47,12 @@ async def amain(mm):
     # Final chunk has the stats
     print('\n', '-'*80, chunk)
 
-    async for chunk in extract_content(mm.chat_complete(msgs, tools=tools)):
+    async for chunk in extract_content(mm.chat_complete(msgs, tools=tools, tool_choice='auto')):
+        print(chunk, end='')
+
+    # Pydantic form
+    tools = [V1Function(name='square_root', description='Get the square root of the given number', parameters={'type': 'object', 'properties': {'square': {'type': 'number', 'description': 'Number from which to find the square root'}}, 'required': ['square']})]
+    async for chunk in extract_content(mm.chat_complete(msgs, tools=tools, tool_choice='auto')):
         print(chunk, end='')
 
     print('='*80)
