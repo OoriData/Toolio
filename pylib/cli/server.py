@@ -140,9 +140,7 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
             responder = ToolCallResponder(model_name, model_type, functions, req_data.sysmsg_leadin)
         if not (req_data.tool_options and req_data.tool_options.no_prompt_steering):
             enrich_chat_for_tools(messages, responder.tool_prompt, app.state.model_flags)
-            print('GRIPPO!', leadin)
-            print([m.role for m in messages])
-            import pprint; pprint.pprint(messages)
+            # import pprint; pprint.pprint(messages)
         schema = responder.schema  # Assemble a JSON schema to steer the LLM output
     else:
         if req_data.stream:
