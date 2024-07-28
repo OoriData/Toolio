@@ -17,22 +17,20 @@ Note: you can also point `--model` at a downloaded or converted MLX model on loc
 import json
 import time
 import os
-from enum import Enum
-from typing import Literal, List, Optional, Union
 from contextlib import asynccontextmanager
 import warnings
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Field
 import click
 import uvicorn
 
 from llm_structured_output.util.output import info, warning, debug
 
 from toolio.schema_helper import Model
-from toolio.llm_helper import model_flag, DEFAULT_FLAGS, FLAGS_LOOKUP
+from toolio.llm_helper import enrich_chat_for_tools, DEFAULT_FLAGS, FLAGS_LOOKUP
+from toolio.http_schematics import V1ChatCompletionsRequest, V1ChatMessage, V1ResponseFormatType
 from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
                               ChatCompletionResponder, ChatCompletionStreamingResponder)
 
@@ -58,7 +56,7 @@ async def lifespan(app: FastAPI):
     # XXX: alternate ID option is app.state.model.model.model_type which is a string, e.g. 'gemma2'
     # print(app.state.model.model.__class__, app.state.model.model.model_type)
     info(f'Model loaded in {(tdone - tstart)/1000000000.0:.3f}s. Type: {app.state.model.model.model_type}')
-    app.state.model_flags = FLAGS_LOOKUP.get(app.state.model.model.__class__, DEFAULT_FLAGS)
+    app.state.model_flags = FLAGS_LOOKUP.get(app.state.model.model.model_type, DEFAULT_FLAGS)
     yield
     # Shutdown code here, if any
 
@@ -87,86 +85,6 @@ def get_root():
     return FileResponse(f'{os.path.dirname(os.path.realpath(__file__))}/static/ui.html')
 
 
-class V1ChatMessageRole(str, Enum):
-    SYSTEM = 'system'
-    USER = 'user'
-    ASSISTANT = 'assistant'
-    TOOL = 'tool'
-
-
-class V1ChatMessage(BaseModel):
-    role: V1ChatMessageRole
-    content: str
-
-
-class V1Function(BaseModel):
-    name: str
-    description: str = ''
-    parameters: dict = {}
-
-
-class V1ToolFunction(BaseModel):
-    type: Literal['function']
-    function: V1Function
-
-
-class V1ToolChoiceKeyword(str, Enum):
-    AUTO = 'auto'
-    NONE = 'none'
-
-
-class V1ToolChoiceFunction(BaseModel):
-    type: Optional[Literal['function']] = None
-    name: str
-
-
-class V1ToolOptions(BaseModel):  # Non-standard addition
-    # We automatically add instructions with the JSON schema
-    # for the tool calls to the prompt. This option disables
-    # it and is useful when the user prompt already includes
-    # the schema and relevant instructions.
-    no_prompt_steering: bool = False
-
-
-class V1ResponseFormatType(str, Enum):
-    JSON_OBJECT = 'json_object'
-
-
-class V1ResponseFormat(BaseModel):
-    type: V1ResponseFormatType
-    # schema is our addition, not an OpenAI API parameter
-    # Avoid shadowing BaseModel.schema
-    json_schema: Optional[str] = Field(default=None, alias='schema')
-
-
-class V1StreamOptions(BaseModel):
-    include_usage: bool = False
-
-
-class V1ChatCompletionsRequest(BaseModel):
-    # pylint: disable=too-many-instance-attributes # Paternalistic excess
-    model: str | None = None
-    max_tokens: int = 1000
-    temperature: float = 0.0
-    messages: List[V1ChatMessage]
-    # FIXME: We don't need to keep the function_call logic, I don't think
-    # The 'functions' and 'function_call' fields have been dreprecated and
-    # replaced with 'tools' and 'tool_choice', that work similarly but allow
-    # for multiple functions to be invoked.
-    functions: List[V1Function] = None
-    function_call: Union[V1ToolChoiceKeyword, V1ToolChoiceFunction] = None
-    tools: List[V1ToolFunction] = None
-    # tool_choice: "auto" (default): allow model decide whether to call functions & if so, which
-    # tool_choice: "required": force model to always call one or more functions
-    # tool_choice: {"type": "function", "function": {"name": "my_function"}}: force model to call only one specific function
-    # tool_choice: "none": disable function calling & force model to only generate a user-facing message
-    tool_choice: Union[V1ToolChoiceKeyword, V1ToolChoiceFunction] = None
-    tool_options: V1ToolOptions = None
-    response_format: V1ResponseFormat = None
-    stream: bool = False
-    stream_options: V1StreamOptions = None
-
-
 @app.post('/v1/chat/completions')
 async def post_v1_chat_completions(req_data: V1ChatCompletionsRequest):
     debug('REQUEST', req_data)
@@ -187,7 +105,7 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
 
     # Extract valid functions from the req_data.
     functions = []
-    is_legacy_function_call = False
+    # is_legacy_function_call = False
     # print(req_data)
     if req_data.tool_choice == 'none':
         pass
@@ -206,33 +124,31 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
         ]
 
     model_name = app.state.params['model']
+    model_type = app.state.model.model.model_type
     schema = None
     if functions:
-        # If the req_data includes functions, create a system prompt to instruct the LLM
-        # to use tools, and assemble a JSON schema to steer the LLM output.
+        if req_data.sysmsg_leadin:  # Caller provided sysmsg leadin via protocol
+            leadin = req_data.sysmsg_leadin
+        elif messages[0].role == 'system':  # Caller provided sysmsg leadin in the chat messages
+            leadin = messages[0].content
+            del messages[0]
+        else:  # Use default leadin
+            leadin = None
         if req_data.stream:
-            responder = ToolCallStreamingResponder(model_name, functions, app.state.model)
+            responder = ToolCallStreamingResponder(model_name, model_type, functions, app.state.model, leadin)
         else:
-            responder = ToolCallResponder(model_name, functions)
+            responder = ToolCallResponder(model_name, model_type, functions, req_data.sysmsg_leadin)
         if not (req_data.tool_options and req_data.tool_options.no_prompt_steering):
-            role = 'user' if model_flag.NO_SYSTEM_ROLE in app.state.model_flags else 'system'
-            # print(role, model_flag.USER_ASSISTANT_ALT in app.state.model_flags, app.state.model_flags)
-            if role == 'user' and model_flag.USER_ASSISTANT_ALT in app.state.model_flags:
-                messages[0].content = messages[0].content=responder.tool_prompt + '\n\n' + messages[0].content
-            else:
-                messages.insert(
-                    0,
-                    V1ChatMessage(
-                        role=role,
-                        content=responder.tool_prompt,
-                    ),
-                )
-        schema = responder.schema
+            enrich_chat_for_tools(messages, responder.tool_prompt, app.state.model_flags)
+            print('GRIPPO!', leadin)
+            print([m.role for m in messages])
+            import pprint; pprint.pprint(messages)
+        schema = responder.schema  # Assemble a JSON schema to steer the LLM output
     else:
         if req_data.stream:
-            responder = ChatCompletionStreamingResponder(model_name)
+            responder = ChatCompletionStreamingResponder(model_name, model_type)
         else:
-            responder = ChatCompletionResponder(model_name)
+            responder = ChatCompletionResponder(model_name, model_type)
         if req_data.response_format:
             assert req_data.response_format.type == V1ResponseFormatType.JSON_OBJECT
             # The req_data may specify a JSON schema (this option is not in the OpenAI API)
@@ -276,8 +192,6 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
 
 
 @click.command()
-# @click.option('--prompt', help='Prompt text; can use {jsonschema} placeholder for the schema')
-# @click.option('--prompt-file', type=click.File('rb'), help='Prompt text; can use {jsonschema} placeholder for the schema')
 @click.option('--host', default='127.0.0.1', help='Host nodename/address for the launched server')
 @click.option('--port', default=8000, help='Network port for the launched server')
 # @click.option('--reload', is_flag=True, help='Reload on code update')
@@ -285,8 +199,10 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
 @click.option('--default-schema',
     help='JSON schema to be used if not provided via API call. Interpolated into {jsonschema} placeholder in prompts')
 @click.option('--default-schema-file',
-    help='Path to JSON schema to be used if not provided via API call. Interpolated into {jsonschema} placeholder in prompts')
+    help='Path to JSON schema to be used if not provided via API call.'
+         'Interpolated into {jsonschema} placeholder in prompts')
 @click.option('--llmtemp', default='0.1', type=float, help='LLM sampling temperature')
 def main(host, port, model, default_schema, default_schema_file, llmtemp):
-    app_params.update(model=model, default_schema=default_schema, default_schema_fpath=default_schema_file, llmtemp=llmtemp)
+    app_params.update(model=model, default_schema=default_schema, default_schema_fpath=default_schema_file,
+                      llmtemp=llmtemp)
     uvicorn.run('toolio.cli.server:app', host=host, port=port, reload=False)

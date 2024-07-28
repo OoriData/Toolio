@@ -22,15 +22,16 @@ from amara3 import iri
 from ogbujipt import config
 from ogbujipt.llm_wrapper import llm_response, response_type
 
+from toolio import TOOLIO_MODEL_TYPE_FIELD
 from toolio.util import check_callable
+from toolio.llm_helper import set_tool_response, model_flag, FLAGS_LOOKUP, DEFAULT_FLAGS as DEFAULT_MODEL_FLAGS
 
 
 class tool_flag(Flag):
-    ASSISTANT_RESPONSE = auto()  # Convert tool role responses to assistant role
     REMOVE_USED_TOOLS = auto()  # Remove tools which the LLM has already used from subsequent trips
 
 
-DEFAULT_FLAGS = tool_flag.ASSISTANT_RESPONSE | tool_flag.REMOVE_USED_TOOLS
+DEFAULT_FLAGS = tool_flag.REMOVE_USED_TOOLS
 # Tool choice feels like it could be an enum, but it's not clear that the valus are fixed across conventions
 TOOL_CHOICE_AUTO = 'auto'
 TOOL_CHOICE_NONE = 'none'
@@ -81,7 +82,6 @@ class struct_mlx_chat_api:
         # self._pending_tool_calls = {}
         self._registered_tool = {}  # tool_name: tool_obj
         self._tool_schema_stanzs = []
-        self.tool_role = 'assistant' if tool_flag.ASSISTANT_RESPONSE in flags else 'tool'
         self._flags = flags
         self._trace = trace
         for toolobj in tools:
@@ -153,18 +153,13 @@ class struct_mlx_chat_api:
                         return resp
                     tool_responses = await self.execute_tool_calls(resp)
                     for call_id, callee_name, result in tool_responses:
-                        if self.tool_role == 'assistant':
-                            messages.append({
-                                'role': 'assistant',
-                                'content': f'Result of the call to {callee_name}: {result}',
-                            })
-                        elif self.tool_role == 'tool':
-                            messages.append({
-                                'tool_call_id': call_id,
-                                'role': self.tool_role,
-                                'name': callee_name,
-                                'content': str(result),
-                            })
+                        model_type = resp[TOOLIO_MODEL_TYPE_FIELD]
+                        model_flags = FLAGS_LOOKUP.get(model_type, DEFAULT_MODEL_FLAGS)
+                        print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
+                        if not model_flags:
+                            warnings.warn(f'Unknown model type {model_type} specified by server. Likely client/server version skew')
+                        # FIXME: Separate out natural language
+                        set_tool_response(messages, call_id, callee_name, str(result), model_flags)
                         if tool_flag.REMOVE_USED_TOOLS in self._flags:
                             # Many FLOSS LLMs get confused if they see a tool definition still in the response back
                             # And loop back with a new tool request. Remove it to avoid this.

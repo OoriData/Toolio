@@ -9,13 +9,14 @@ Marshalling sreaming & non-streaming responses from LLMs
 import json
 import time
 
-from toolio import LANG
+from toolio import LANG, TOOLIO_MODEL_TYPE_FIELD
 
 
 class ChatCompletionResponder:
-    def __init__(self, model_name: str):
+    def __init__(self, model_name: str, model_type: str):
         self.object_type = 'chat.completion'
         self.model_name = model_name
+        self.model_type = model_type
         self.created = int(time.time())
         self.id = f'{id(self)}_{self.created}'
         self.content = ''
@@ -26,6 +27,8 @@ class ChatCompletionResponder:
             'id': f'chatcmpl-{self.id}',
             'created': self.created,
             'model': self.model_name,
+            # Toolio extension; Not OpenAi API, so beware of downstream problems
+            TOOLIO_MODEL_TYPE_FIELD: self.model_type,
         }
 
     def translate_reason(self, reason):
@@ -47,12 +50,8 @@ class ChatCompletionResponder:
             },
         }
 
-    def generated_tokens(
-        self,
-        text: str,
-    ):
+    def generated_tokens(self, text: str):
         self.content += text
-        return None
 
     def generation_stopped(
         self,
@@ -72,8 +71,8 @@ class ChatCompletionResponder:
 
 
 class ChatCompletionStreamingResponder(ChatCompletionResponder):
-    def __init__(self, model_name: str):
-        super().__init__(model_name)
+    def __init__(self, model_name: str, model_type: str):
+        super().__init__(model_name, model_type)
         self.object_type = 'chat.completion.chunk'
 
     def generated_tokens(
@@ -114,19 +113,17 @@ class ToolCallResponder(ChatCompletionResponder):
     https://platform.openai.com/docs/guides/function-calling?lang=python
 
     > Basic sequence of steps for function calling:
-    > 1. Call the model with the user query and a set of functions defined in the functions parameter.
-    > 2. The model can choose to call one or more functions; if so, the content will be a stringified JSON object adhering to your custom schema (note: the model may hallucinate parameters).
+    > 1. Call the model with the user query and a set of tools defined in the functions parameter.
+    > 2. The model can choose to call one or more tools; if so, the content will be a stringified JSON object adhering to your custom schema (note: the model may hallucinate parameters).
     > 3. Parse the string into JSON in your code, and call your function with the provided arguments if they exist.
     > 4. Call the model again by appending the function response as a new message, and let the model summarize the results back to the user.
     '''
-    def __init__(
-        self, model_name: str, functions: list[dict]  # , is_legacy_function_call: bool
-    ):
-        super().__init__(model_name)
+    def __init__(self, model_name: str, model_type: str, tools: list[dict], sysmsg_leadin: str | None = None):
+        super().__init__(model_name, model_type)
 
         # XXX: Can we just remove legacy OpenAI API support?
-        is_legacy_function_call = False
-        self.is_legacy_function_call = is_legacy_function_call
+        self.is_legacy_function_call = False
+        self.sysmsg_leadin = sysmsg_leadin
 
         function_schemas = [
             {
@@ -137,17 +134,17 @@ class ToolCallResponder(ChatCompletionResponder):
                 },
                 'required': ['name', 'arguments'],
             }
-            for fn in functions
+            for fn in tools
         ]
         if len(function_schemas) == 1:
             self.schema = function_schemas[0]
-            self.tool_prompt = self._one_tool_prompt(functions[0], function_schemas[0])
-        elif is_legacy_function_call:  # Only allows one function to be called.
+            self.tool_prompt = self._one_tool_prompt(tools[0], function_schemas[0])
+        elif self.is_legacy_function_call:  # Only allows one function to be called.
             self.schema = {'oneOf': function_schemas}
-            self.tool_prompt = self._select_tool_prompt(functions, function_schemas)
+            self.tool_prompt = self._select_tool_prompt(tools, function_schemas)
         else:
             self.schema = {'type': 'array', 'items': {'anyOf': function_schemas}}
-            self.tool_prompt = self._multiple_tool_prompt(functions, function_schemas)
+            self.tool_prompt = self._multiple_tool_prompt(tools, function_schemas)
 
     def translate_reason(self, reason):
         if reason == 'end':
@@ -166,7 +163,7 @@ class ToolCallResponder(ChatCompletionResponder):
         if finish_reason == 'tool_calls':
             tool_calls = json.loads(self.content)
             if not isinstance(tool_calls, list):
-                # len(functions) == 1 was special cased
+                # len(tools) == 1 was special cased
                 tool_calls = [tool_calls]
             message = {
                 'role': 'assistant',
@@ -202,46 +199,43 @@ class ToolCallResponder(ChatCompletionResponder):
         }
 
     def _one_tool_prompt(self, tool, tool_schema):
+        leadin = self.sysmsg_leadin or LANG['one_tool_prompt_leadin']
         return f'''
-{LANG["one_tool_prompt_leadin"]} {tool.name}: {tool.description}
+{leadin} {tool.name}: {tool.description}
 {LANG["one_tool_prompt_schemalabel"]}: {json.dumps(tool_schema)}
 {LANG["one_tool_prompt_tail"]}
 '''
 
-    def _multiple_tool_prompt(self, tools, tool_schemas, separator='\n'):
+    def _multiple_tool_prompt(self, tools, tool_schemas, separator='\n', leadin=None):
+        leadin = self.sysmsg_leadin or LANG['multi_tool_prompt_leadin']
         toollist = separator.join(
             [f'\nTool {tool.name}: {tool.description}\nInvocation schema: {json.dumps(tool_schema)}\n'
                 for tool, tool_schema in zip(tools, tool_schemas) ])
         return f'''
-{LANG["multi_tool_prompt_leadin"]}
+{leadin}
 {toollist}
 {LANG["multi_tool_prompt_tail"]}
 '''
 
-    def _select_tool_prompt(self, tools, tool_schemas, separator='\n'):
+    def _select_tool_prompt(self, tools, tool_schemas, separator='\n', leadin=None):
+        leadin = self.sysmsg_leadin or LANG['multi_tool_prompt_leadin']
         toollist = separator.join(
             [f'\n{LANG["select_tool_prompt_toollabel"]} {tool.name}: {tool.description}\n'
              f'{LANG["select_tool_prompt_schemalabel"]}: {json.dumps(tool_schema)}\n'
                 for tool, tool_schema in zip(tools, tool_schemas) ])
         return f'''
-{LANG["multi_tool_prompt_leadin"]}
+{leadin}
 {toollist}
 {LANG["select_tool_prompt_tail"]}
 '''
 
 
 class ToolCallStreamingResponder(ToolCallResponder):
-    def __init__(
-        self,
-        model_name: str,
-        functions: list[dict],
-        # is_legacy_function_call: bool,
-        model,
-    ):
+    def __init__(self, model_name: str, model_type: str, tools: list[dict], model, sysmsg_leadin: str | None = None):
         # XXX: Can we just remove legacy OpenAI API support?
         is_legacy_function_call = False
-        # super().__init__(model_name, functions, is_legacy_function_call)
-        super().__init__(model_name, functions)
+        # super().__init__(model_name, tools, is_legacy_function_call)
+        super().__init__(model_name, model_type, tools, sysmsg_leadin)
         self.object_type = 'chat.completion.chunk'
 
         # We need to parse the output as it's being generated in order to send
@@ -283,7 +277,7 @@ class ToolCallStreamingResponder(ToolCallResponder):
                 },
                 'required': ['name', 'arguments'],
             }
-            for fn in functions
+            for fn in tools
         ]
         if len(hooked_function_schemas) == 1:
             hooked_schema = hooked_function_schemas[0]

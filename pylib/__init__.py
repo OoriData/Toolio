@@ -10,6 +10,8 @@ from toolio import __about__
 
 VERSION = __about__.__version__
 
+TOOLIO_MODEL_TYPE_FIELD = 'toolio.model_type'
+
 
 # FIXME: Replace with utiloori.filepath.obj_file_path_parent
 def obj_file_path_parent(obj):
