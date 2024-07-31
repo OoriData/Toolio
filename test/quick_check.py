@@ -16,52 +16,72 @@ async def amain(mm):
         # {'role': 'user', 'content': 'I am thinking of a number between 1 and 10. Guess what it is.'}
         {'role': 'user', 'content': 'Hello! How are you?'}
         ]
-    async for chunk in extract_content(mm.chat_complete(msgs)):
+    async for chunk in extract_content(mm.complete(msgs)):
         print(chunk, end='')
 
-    print('='*80)
+    print('\n', '='*40, 'Country extraction')
 
     prompt = ('Which countries are mentioned in the sentence \'Adamma went home to Nigeria for the hols\'?'
               'Your answer should be only JSON, according to this schema: {json_schema}')
     schema = ('{"type": "array", "items":'
               '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}')
-    msgs = [
-        {'role': 'user', 'content': prompt.format(json_schema=schema)}
-        ]
-    async for chunk in extract_content(mm.chat_complete(msgs, json_schema=schema)):
+    msgs = [{'role': 'user', 'content': prompt.format(json_schema=schema)}]
+    async for chunk in extract_content(mm.complete(msgs, json_schema=schema)):
         print(chunk, end='')
 
-    print('='*80)
+    print('\n', '='*40, 'Square root of 256, pt 1')
 
     prompt = 'What is the square root of 256?'
     # Plain dictionary form
-    tools = [{'name': 'square_root', 'description': 'Get the square root of the given number', 'parameters': {'type': 'object', 'properties': {'square': {'type': 'number', 'description': 'Number from which to find the square root'}}, 'required': ['square']}}]
-    msgs = [
-        {'role': 'user', 'content': prompt}
-        ]
-    async for chunk in mm.chat_complete(msgs):
+    # tools = [{'name': 'square_root', 'description': 'Get the square root of the given number', 'parameters': {'type': 'object', 'properties': {'square': {'type': 'number', 'description': 'Number from which to find the square root'}}, 'required': ['square']}}]
+    # Pydantic form
+    # tools = [V1Function(name='square_root', description='Get the square root of the given number', parameters={'type': 'object', 'properties': {'square': {'type': 'number', 'description': 'Number from which to find the square root'}}, 'required': ['square']})]
+    msgs = [ {'role': 'user', 'content': prompt} ]
+    async for chunk in mm.complete(msgs):
         content = chunk['choices'][0]['delta']['content']
         if content is not None:
             print(content, end='')
 
     # Final chunk has the stats
-    print('\n', '-'*80, chunk)
+    print('\n', '='*40, 'Square root of 256, pt 2')
 
-    async for chunk in extract_content(mm.chat_complete(msgs, tools=tools, tool_choice='auto')):
+    async for chunk in extract_content(mm.complete_with_tools(msgs, toolset=['square_root'], tool_choice='auto')):
         print(chunk, end='')
 
-    # Pydantic form
-    tools = [V1Function(name='square_root', description='Get the square root of the given number', parameters={'type': 'object', 'properties': {'square': {'type': 'number', 'description': 'Number from which to find the square root'}}, 'required': ['square']})]
-    async for chunk in extract_content(mm.chat_complete(msgs, tools=tools, tool_choice='auto')):
-        print(chunk, end='')
+    # async for chunk in extract_content(mm.complete_with_tools(msgs, toolset=['square_root'], tool_choice='auto')):
+    #     print(chunk, end='')
 
-    print('='*80)
+    print('\n', '='*80)
+
+    # mm.register_tool(name, toolobj)
 
     # mm.chat_complete(msgs, functions=None, stream=True, json_response=None, json_schema=None,
     #                         max_tokens=128, temperature=0.1)
 
 model = sys.argv[1]
-mm = model_manager(model)
+SQUARE_ROOT_METADATA = {'name': 'square_root',
+                            'description': 'Get the square root of the given number',
+                            'parameters': {'type': 'object', 'properties': {
+                                'square': {'type': 'number', 'description': 'Number from which to find the square root'}},
+                                'required': ['square']}}
+SQUARE_ROOT_METADATA_CMDLINE_REQUEST = {'type': 'function',
+                        'function': SQUARE_ROOT_METADATA, 'pyfunc': 'math|sqrt'}
+
+    # # Pydantic form
+    # tools = [V1Function(name='square_root', description='Get the square root of the given number', parameters={'type': 'object', 'properties': {'square': {'type': 'number', 'description': 'Number from which to find the square root'}}, 'required': ['square']})]
+
+# {'name': 'square_root', 'description': 'Get the square root of the given number',
+#                     'parameters': {'type': 'object', 'properties': {'square': {'type': 'number',
+#                     'description': 'Number from which to find the square root'}}, 'required': ['square']}}
+
+from math import sqrt  # noqa: E402
+
+# each tool is either a callable with built-in metadata, or a tuple of (func, metadata)
+TOOLS = [(sqrt, SQUARE_ROOT_METADATA)]
+
+mm = model_manager(model, tool_reg=TOOLS)
+print('Model type:', mm.model_type)
+
 resp = asyncio.run(amain(mm))
 
 # @click.command()

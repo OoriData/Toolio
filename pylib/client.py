@@ -8,11 +8,10 @@ Encapsulate HTTP query of LLMs for structured response, as hosted by MLXStructur
 Modeled on ogbujipt.llm_wrapper.openai_api & ogbujipt.llm_wrapper.openai_chat_api
 
 '''
-import sys
+# import sys
 import json
 import warnings
 from enum import Flag, auto
-import importlib
 
 import httpx
 # import asyncio
@@ -23,8 +22,7 @@ from ogbujipt import config
 from ogbujipt.llm_wrapper import llm_response, response_type
 
 from toolio import TOOLIO_MODEL_TYPE_FIELD
-from toolio.util import check_callable
-from toolio.llm_helper import set_tool_response, model_flag, FLAGS_LOOKUP, DEFAULT_FLAGS as DEFAULT_MODEL_FLAGS
+from toolio.llm_helper import model_manager, set_tool_response, FLAGS_LOOKUP, DEFAULT_FLAGS as DEFAULT_MODEL_FLAGS
 
 
 class tool_flag(Flag):
@@ -39,7 +37,7 @@ TOOL_CHOICE_NONE = 'none'
 HTTP_SUCCESS = 200
 
 
-class struct_mlx_chat_api:
+class struct_mlx_chat_api(model_manager):
     '''
     Wrapper for OpenAI chat-style LLM API endpoint, with support for structured responses
     via schema specifiation in query
@@ -51,7 +49,7 @@ class struct_mlx_chat_api:
     >>> resp = asyncio.run(llm_api(prompt_to_chat('Knock knock!')))
     >>> resp.first_choice_text
     '''
-    def __init__(self, base_url=None, default_schema=None, flags=DEFAULT_FLAGS, tools=None, trace=False, **kwargs):
+    def __init__(self, base_url=None, default_schema=None, flags=DEFAULT_FLAGS, tool_impl=None, trace=False, **kwargs):
         '''
         Args:
             base_url (str, optional): Base URL of the API endpoint
@@ -59,13 +57,14 @@ class struct_mlx_chat_api:
 
             flags (int, optional): bitwise flags to control tool flow
 
-            tools - Tools made available by default to all queries, tool_name: tool__path_or_obj
+            tool_impl (dict) - Tools made available by default to all queries, in registry format:
+                tool_name: tool__path_or_obj
 
             trace - Print information (to STDERR) about tool call requests & results. Useful for debugging
 
             kwargs (dict, optional): Extra parameters for the API or for the model host
         '''
-        tools = tools or {}
+        tools = tool_impl or {}
         self.parameters = config.attr_dict(kwargs)
         self.default_schema = default_schema
         self.base_url = base_url
@@ -80,12 +79,12 @@ class struct_mlx_chat_api:
         # OpenAI-style tool-calling LLMs give IDs to tool requests by the LLM
         # Internal structure to manage these. Key is tool_call_id; value is tuple of callable, kwargs
         # self._pending_tool_calls = {}
-        self._registered_tool = {}  # tool_name: tool_obj
+        self._tool_registry = {}  # tool_name: tool_obj
         self._tool_schema_stanzs = []
         self._flags = flags
         self._trace = trace
         for toolobj in tools:
-            self.register_tool(toolobj.name, toolobj, add_schema=True)
+            self.register_tool(toolobj.name, toolobj)
 
     async def __call__(self, messages, req='chat/completions', schema=None, tools=None, apikey=None,
                          max_trips=3, trip_timeout=90.0, **kwargs):
@@ -96,6 +95,8 @@ class struct_mlx_chat_api:
             messages (str) - Prompt in the form of list of messages to send ot the LLM for completion
 
             trip_timeout (float) - timeout (in seconds) per LLM API request trip; defaults to 90s
+
+            tools - Dictionary of tools in request format
 
             kwargs (dict, optional): Extra parameters to pass to the model via API.
                 See Completions.create in OpenAI API, but in short, these:
@@ -121,7 +122,7 @@ class struct_mlx_chat_api:
         req_data = {'messages': messages, **kwargs}
         if schema:
             req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
-            resp = await self.round_trip(req, req_data, trip_timeout, apikey, **kwargs)
+            resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
 
         elif tools or self._tool_schema_stanzs:
             tools_list = tools.get('tools', [])
@@ -143,7 +144,7 @@ class struct_mlx_chat_api:
                 # If the tools list is empty (perhaps we removed the last one in a prev loop), omit it entirely
                 if 'tools' in req_data and not req_data['tools']:
                     del req_data['tools']
-                resp = await self.round_trip(req, req_data, trip_timeout, apikey, **kwargs)
+                resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
                 max_trips -= 1
                 # If LLM has asked for tool calls, prepare to loop back
                 if resp['response_type'] == response_type.TOOL_CALL:
@@ -151,7 +152,7 @@ class struct_mlx_chat_api:
                     if not max_trips:
                         # If there are no more available trips, don't bother calling the tools
                         return resp
-                    tool_responses = await self.execute_tool_calls(resp)
+                    tool_responses = await self._execute_tool_calls(resp)
                     for call_id, callee_name, result in tool_responses:
                         model_type = resp.get(TOOLIO_MODEL_TYPE_FIELD)
                         model_flags = FLAGS_LOOKUP.get(model_type, DEFAULT_MODEL_FLAGS)
@@ -178,11 +179,11 @@ class struct_mlx_chat_api:
                 warnings.warn('Maximum LLM trips exhausted without a final answer')
 
         else:
-            resp = await self.round_trip(req, req_data, trip_timeout, apikey, **kwargs)
+            resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
 
         return resp
 
-    async def round_trip(self, req, req_data, timeout, apikey, **kwargs):
+    async def _http_trip(self, req, req_data, timeout, apikey, **kwargs):
         '''
         Single call/response to MLXStructuredLMServer. Multiple might be involved in a single tool-calling round
         '''
@@ -209,8 +210,8 @@ class struct_mlx_chat_api:
         Given a function/tool name, return the callable which implements it
         '''
         # print('lookup_tool', name)
-        if name in self._registered_tool:
-            return self._registered_tool[name]
+        if name in self._tool_registry:
+            return self._tool_registry[name]
         else:
             # FIXME: i18n
             raise LookupError(f'Unknown tool: {name}')
@@ -222,60 +223,3 @@ class struct_mlx_chat_api:
     #         callee_args = tc['function']['arguments_obj']
     #         tool = self.lookup_tool(callee_name)
     #         self._pending_tool_calls[tc['id']] = (tool, callee_args)
-
-    async def execute_tool_calls(self, response):
-        # print('update_tool_calls', response)
-        tool_responses = []
-        for tc in response['choices'][0].get('message', {}).get('tool_calls'):
-            call_id = tc['id']
-            callee_name = tc['function']['name']
-            callee_args = tc['function']['arguments_obj']
-            tool = self.lookup_tool(callee_name)
-            if tool is None:
-                warnings.warn(f'Tool called, but it has no function implementation: {callee_name}')
-                continue
-            if self._trace:
-                print(f'⚙️ Calling tool {callee_name} with args {callee_args}', file=sys.stderr)
-            # FIXME: Parallelize async calls rather than blocking on each
-            try:
-                is_callable, is_async_callable = check_callable(tool)
-                if is_async_callable:
-                    result = await tool(**callee_args)
-                elif is_callable:
-                    result = tool(**callee_args)
-            except TypeError as e:
-                # try for special case where the function takes exactly 1 argument
-                if len(callee_args) == 1 and 'no keyword arguments' in str(e):
-                    if is_async_callable:
-                        result = await tool(next(iter(callee_args.values())))
-                    elif is_callable:
-                        result = tool(next(iter(callee_args.values())))
-                else:
-                    raise
-            if self._trace:
-                print(f'⚙️ Tool call result: {result}', file=sys.stderr)
-            tool_responses.append((call_id, callee_name, result))
-            # print('Tool result:', result)
-            # self._pending_tool_calls[tc['id']] = (tool, callee_args)
-        return tool_responses
-
-    def register_tool(self, name, funcpath_or_obj, add_schema=False):
-        if isinstance(funcpath_or_obj, str):
-            funcpath = funcpath_or_obj
-            # pyfunc is in the form 'path.to.module_to_import|path.to.function'
-            modpath, funcpath = funcpath.split('|')
-            modobj = importlib.import_module(modpath)
-            parent = modobj
-            for funcname in funcpath.split('.'):
-                parent = getattr(parent, funcname)
-            func = parent
-            assert callable(func)
-            self._registered_tool[name] = func
-        elif funcpath_or_obj is None:
-            warnings.warn(f'No implementation provided for function: {name}')
-            self._registered_tool[name] = None
-        else:
-            funcobj = funcpath_or_obj
-            self._registered_tool[name] = funcobj
-            if add_schema:
-                self._tool_schema_stanzs.append(funcobj.schema)

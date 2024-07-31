@@ -141,6 +141,7 @@ class ToolCallResponder(ChatCompletionResponder):
         else:
             self.schema = {'type': 'array', 'items': {'anyOf': function_schemas}}
             self.tool_prompt = self._multiple_tool_prompt(tools, function_schemas)
+        # print(f'{self.tool_prompt=}')
 
     def translate_reason(self, reason):
         if reason == 'end':
@@ -155,6 +156,7 @@ class ToolCallResponder(ChatCompletionResponder):
     ):
         finish_reason = self.translate_reason(stop_reason)
         if finish_reason == 'tool_calls':
+            # print(f'{self.content=}')
             tool_calls = json.loads(self.content)
             if not isinstance(tool_calls, list):
                 # len(tools) == 1 was special cased

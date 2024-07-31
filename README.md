@@ -389,7 +389,6 @@ async def say_hello(tmm):
 asyncio.run(say_hello(toolio_mm))
 ```
 
-
 # Credits
 
 * otriscon's [llm-structured-output](https://github.com/otriscon/llm-structured-output/) is the foundation of this package

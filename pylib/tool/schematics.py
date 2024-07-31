@@ -39,14 +39,9 @@ def tool(name, desc=None, params=None):
                 renames[p.name] = p.rename
         # Description can come from the docstring, or be overridden by kwarg
         _desc = desc or textwrap.dedent(func.__doc__)
-        
-        schema = {
-            'type': 'function',
-            'function': {
-                'name': name,
-                'description': _desc,
-                'parameters': {'type': 'object', 'properties': schema_params, 'required': required_list}}
-            }
+
+        schema = {'name': name, 'description': _desc,
+                  'parameters': {'type': 'object', 'properties': schema_params, 'required': required_list}}
 
         @functools.wraps(func)
         def tool_inner(*args, **kwargs):
