@@ -200,7 +200,6 @@ class model_manager:
                 # No tools called, so no more trips
                 break
             if not req_tool_spec:
-                messages = [V1ChatMessage(role='user', content='What is the square root of 256?\n'), V1ChatMessage(role='assistant', content='Result of the call to square_root: 16.0')]
                 # This is the final call, with all tools removed, so just do a regular completion
                 # XXX: SHould we allow a JSON schema or other control for the final response?
                 async for resp in self.complete(messages, stream=stream, max_tokens=max_tokens, temperature=temperature):
