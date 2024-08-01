@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from toolio.client import struct_mlx_chat_api, response_type
+from toolio.client import struct_mlx_chat_api, response_type, cmdline_tools_struct
 from toolio.tool import tool, param
 
 CHAT_COMPLETIONS_URL = '/v1/chat/completions'
@@ -58,7 +58,8 @@ async def test_boulder_weather_1(httpserver, session_cls):
     boulder_weather_trip1_ht = session_cls(
         label='Boulder weather - trip1 (Hermes theta)',
         req_messages=[{'role': 'user', 'content': "What's the weather like in Boulder today?\n"}],
-        req_tools={'tools': [{'type': 'function', 'function': {'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'City and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['℃', '℉']}}, 'required': ['location']}}}], 'tool_choice': 'auto'},
+        # req_tools={'tools': [{'type': 'function', 'function': {'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'City and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['℃', '℉']}}, 'required': ['location']}}}], 'tool_choice': 'auto'},
+        req_tools=[{'type': 'function', 'function': {'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'City and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['℃', '℉']}}, 'required': ['location']}}}],
         resp_json={'choices': [{'index': 0, 'message': {'role': 'assistant', 'tool_calls': [{'id': 'call_6107388496_1719881067_0', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': '{"location": "Boulder, MA", "unit": "\\u2109"}'}}]}, 'finish_reason': 'tool_calls'}], 'usage': {'completion_tokens': 36, 'prompt_tokens': 185, 'total_tokens': 221}, 'object': 'chat.completion', 'id': 'chatcmpl-6107388496_1719881067', 'created': 1719881067, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'},
         resp_type=response_type.TOOL_CALL)
 
@@ -74,7 +75,7 @@ async def test_square_root(httpserver, session_cls):
     square_root_ht = session_cls(
         label='Square root (Hermes theta)',
         req_messages=[{'role': 'user', 'content': 'What is the square root of 256?\n'}],
-        req_tools={'tools': [{'type': 'function', 'function': {'name': 'square_root', 'description': 'Get the square root of the given number', 'parameters': {'type': 'object', 'properties': {'square': {'type': 'number', 'description': 'Number from which to find the square root'}}, 'required': ['square']}, 'pyfunc': 'math|sqrt'}}], 'tool_choice': 'auto'},
+        req_tools=[{'type': 'function', 'function': {'name': 'square_root', 'description': 'Get the square root of the given number', 'parameters': {'type': 'object', 'properties': {'square': {'type': 'number', 'description': 'Number from which to find the square root'}}, 'required': ['square']}, 'pyfunc': 'math|sqrt'}}],
         # Trip 2 is the final result:
         resp_json={'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': 'The square root of 256 is 16.'}, 'finish_reason': 'stop'}], 'usage': {'completion_tokens': 10, 'prompt_tokens': 32, 'total_tokens': 42}, 'object': 'chat.completion', 'id': 'chatcmpl-6108365968_1719891004', 'created': 1719891004, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'},
        # Trip 1 retuns:
@@ -86,8 +87,10 @@ async def test_square_root(httpserver, session_cls):
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(square_root_ht.intermed_resp_jsons[0])
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(square_root_ht.resp_json)
 
-    llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
-    resp = await llm(square_root_ht.req_messages, tools=square_root_ht.req_tools)
+    (tools_list, toolset) = cmdline_tools_struct(square_root_ht.req_tools)
+    # tool_choice = tools_obj.get('tool_choice', 'auto')
+    llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'), tool_reg=tools_list)
+    resp = await llm(square_root_ht.req_messages, toolset=toolset)
     assert resp['response_type'] == square_root_ht.resp_type
     assert resp.first_choice_text == square_root_ht.resp_text
 
@@ -121,7 +124,7 @@ async def test_currency_convert(httpserver, session_cls):
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(currency_convert_ht.intermed_resp_jsons[0])
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(currency_convert_ht.resp_json)
 
-    llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'), tools=currency_convert_ht.req_tools)
-    resp = await llm(currency_convert_ht.req_messages)
+    llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'), tool_reg=currency_convert_ht.req_tools)
+    resp = await llm(currency_convert_ht.req_messages, toolset=['currency_exchange'])
     assert resp['response_type'] == currency_convert_ht.resp_type
     assert resp.first_choice_text == currency_convert_ht.resp_text

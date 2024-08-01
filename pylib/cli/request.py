@@ -13,7 +13,7 @@ import asyncio
 import click
 from ogbujipt.llm_wrapper import prompt_to_chat
 
-from toolio.client import struct_mlx_chat_api, response_type
+from toolio.client import struct_mlx_chat_api, response_type, cmdline_tools_struct
 
 
 @click.command()
@@ -66,27 +66,9 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
         tools_obj = json.loads(tools)
     else:
         tools_obj = None
-
-    # Import & register any tools
-    # tool_callables = []
-    if isinstance(tools_obj, list):
-        tools_list = tools_obj
-    elif isinstance(tools_obj, dict):
-        try:
-            tools_list = [ (t['function'].get('pyfunc'), t['function']) for t in tools_obj['tools'] ]
-            for a, b in tools_list:
-                del b['pyfunc']
-        except KeyError:
-            raise ValueError('Malformed tools dictionary {tools_obj}')
-        tool_choice = tools_obj.get('tool_choice', 'auto')
-        toolset = [ t[1]['name'] for t in tools_list ]
-    else:
-        raise ValueError('Invalid tools list {tools_obj}')
-
-    # for tpath in tools_obj:
-    #     modpath, call_name  = tpath.rsplit('.', 1)
-    #     modobj = importlib.import_module(modpath)
-    #     tool_callables.append(getattr(modobj, call_name))
+    
+    (tools_list, toolset) = cmdline_tools_struct(tools_obj)
+    tool_choice = tools_obj.get('tool_choice', 'auto')
 
     llm = struct_mlx_chat_api(base_url=apibase, tool_reg=tools_list, trace=trace)
     resp = asyncio.run(llm(prompt_to_chat(prompt, system=sysprompt), schema=schema_obj, toolset=toolset,

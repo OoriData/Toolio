@@ -85,12 +85,12 @@ class struct_mlx_chat_api(model_manager):
         self._flags = flags
         self._trace = trace
         # Prepare library of tools
-        for toolspec in tool_reg:
+        for toolspec in (tool_reg or []):
             if isinstance(toolspec, tuple):
                 funcpath_or_obj, schema = toolspec
                 self.register_tool(funcpath_or_obj, schema)
             else:
-                self.register_tool(funcpath_or_obj)
+                self.register_tool(toolspec)
 
     async def __call__(self, messages, req='chat/completions', schema=None, toolset=None, tool_choice=TOOL_CHOICE_AUTO,
                        apikey=None, max_trips=3, trip_timeout=90.0, **kwargs):
@@ -115,7 +115,7 @@ class struct_mlx_chat_api(model_manager):
             dict: JSON response from the LLM
         '''
         # Uncomment for test case construction
-        # print('MESSAGES', messages, '\n', 'SCHEMA', schema, '\n', 'TOOLS', tools)
+        # print('MESSAGES', messages, '\n', 'SCHEMA', schema, '\n', 'TOOLS', toolset)
         toolset = toolset or {}
         req_tools = self._resolve_tools(toolset)
         req_tool_spec = [ s for f, s in req_tools.values() ]
@@ -148,6 +148,7 @@ class struct_mlx_chat_api(model_manager):
             # Enter tool-calling sequence
             llm_call_needed = True
             while max_trips > 0 and llm_call_needed:
+                print(f'{req_data=}')
                 # If the tools list is empty (perhaps we removed the last one in a prev loop), omit it entirely
                 if 'tools' in req_data and not req_data['tools']:
                     del req_data['tools']
@@ -166,9 +167,9 @@ class struct_mlx_chat_api(model_manager):
                         # print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
                         if not model_flags:
                             warnings.warn(f'Unknown model type {model_type} specified by server. Likely client/server version skew')
-                        logging.info(f'{messages=}')
+                        # logging.info(f'{messages=}')
                         set_tool_response(messages, call_id, callee_name, str(result), model_flags)
-                        logging.info(f'{messages=}')
+                        # logging.info(f'{messages=}')
                         if tool_flag.REMOVE_USED_TOOLS in self._flags:
                             # Many FLOSS LLMs get confused if they see a tool definition still in the response back
                             # And loop back with a new tool request. Remove it to avoid this.
@@ -231,3 +232,17 @@ class struct_mlx_chat_api(model_manager):
     #         callee_args = tc['function']['arguments_obj']
     #         tool = self.lookup_tool(callee_name)
     #         self._pending_tool_calls[tc['id']] = (tool, callee_args)
+
+
+def cmdline_tools_struct(tools_obj):
+    'Specifying a function on the command line calls for its own format. Processes it for model managers'
+    if isinstance(tools_obj, dict):
+        tools_list = tools_obj['tools']
+    try:
+        tools_list = [ (t['function'].get('pyfunc'), t['function']) for t in tools_obj ]
+        for _, t in tools_list:
+            del t['pyfunc']
+    except KeyError:
+        raise ValueError(f'Malformed tools dictionary {tools_obj}')
+    toolset = [ t[1]['name'] for t in tools_list ]
+    return (tools_list, toolset)

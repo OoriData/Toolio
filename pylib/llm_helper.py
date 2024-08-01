@@ -223,7 +223,7 @@ class model_manager:
             # print(f'{full_schema=}')
             # req_tools[name] = (func, full_schema)
             req_tools[name] = (func, schema)
-            return req_tools
+        return req_tools
 
     async def _execute_tool_calls(self, response, req_tools):
         # print('update_tool_calls', response)
