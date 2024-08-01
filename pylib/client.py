@@ -8,7 +8,7 @@ Encapsulate HTTP query of LLMs for structured response, as hosted by MLXStructur
 Modeled on ogbujipt.llm_wrapper.openai_api & ogbujipt.llm_wrapper.openai_chat_api
 
 '''
-# import sys
+import logging
 import json
 import warnings
 from enum import Flag, auto
@@ -22,7 +22,8 @@ from ogbujipt import config
 from ogbujipt.llm_wrapper import llm_response, response_type
 
 from toolio import TOOLIO_MODEL_TYPE_FIELD
-from toolio.llm_helper import model_manager, set_tool_response, FLAGS_LOOKUP, DEFAULT_FLAGS as DEFAULT_MODEL_FLAGS
+from toolio.llm_helper import model_manager, set_tool_response, TOOL_CHOICE_AUTO, TOOL_CHOICE_NONE, FLAGS_LOOKUP
+from toolio.llm_helper import DEFAULT_FLAGS as DEFAULT_MODEL_FLAGS
 
 
 class tool_flag(Flag):
@@ -31,8 +32,6 @@ class tool_flag(Flag):
 
 DEFAULT_FLAGS = tool_flag.REMOVE_USED_TOOLS
 # Tool choice feels like it could be an enum, but it's not clear that the valus are fixed across conventions
-TOOL_CHOICE_AUTO = 'auto'
-TOOL_CHOICE_NONE = 'none'
 
 HTTP_SUCCESS = 200
 
@@ -49,7 +48,7 @@ class struct_mlx_chat_api(model_manager):
     >>> resp = asyncio.run(llm_api(prompt_to_chat('Knock knock!')))
     >>> resp.first_choice_text
     '''
-    def __init__(self, base_url=None, default_schema=None, flags=DEFAULT_FLAGS, tool_impl=None, trace=False, **kwargs):
+    def __init__(self, base_url=None, default_schema=None, flags=DEFAULT_FLAGS, tool_reg=None, trace=False, **kwargs):
         '''
         Args:
             base_url (str, optional): Base URL of the API endpoint
@@ -57,14 +56,16 @@ class struct_mlx_chat_api(model_manager):
 
             flags (int, optional): bitwise flags to control tool flow
 
-            tool_impl (dict) - Tools made available by default to all queries, in registry format:
-                tool_name: tool__path_or_obj
+            tool_reg (list) - Tools with available implementations, in registry format, i.e. each item is one of:
+                * Python import path for a callable annotated (i.e. using toolio.tool.tool decorator)
+                * actual callable, annotated (i.e. using toolio.tool.tool decorator)
+                * tuple of (callable, schema), with separately specified schema
+                * tuple of (None, schema), in which case a tool is declared (with schema) but with no implementation
 
             trace - Print information (to STDERR) about tool call requests & results. Useful for debugging
 
             kwargs (dict, optional): Extra parameters for the API or for the model host
         '''
-        tools = tool_impl or {}
         self.parameters = config.attr_dict(kwargs)
         self.default_schema = default_schema
         self.base_url = base_url
@@ -83,11 +84,16 @@ class struct_mlx_chat_api(model_manager):
         self._tool_schema_stanzs = []
         self._flags = flags
         self._trace = trace
-        for toolobj in tools:
-            self.register_tool(toolobj.name, toolobj)
+        # Prepare library of tools
+        for toolspec in tool_reg:
+            if isinstance(toolspec, tuple):
+                funcpath_or_obj, schema = toolspec
+                self.register_tool(funcpath_or_obj, schema)
+            else:
+                self.register_tool(funcpath_or_obj)
 
-    async def __call__(self, messages, req='chat/completions', schema=None, tools=None, apikey=None,
-                         max_trips=3, trip_timeout=90.0, **kwargs):
+    async def __call__(self, messages, req='chat/completions', schema=None, toolset=None, tool_choice=TOOL_CHOICE_AUTO,
+                       apikey=None, max_trips=3, trip_timeout=90.0, **kwargs):
         '''
         Invoke the LLM with a completion request
 
@@ -96,7 +102,10 @@ class struct_mlx_chat_api(model_manager):
 
             trip_timeout (float) - timeout (in seconds) per LLM API request trip; defaults to 90s
 
-            tools - Dictionary of tools in request format
+            toolset (list) - tools specified for this request, presumably a subset of overall tool registry.
+                Each entry is either a tool name, in which the invocation schema is as registered, or a full
+                tool-calling format stanza, in which case, for this request, only the implementaton is used
+                from the initial registry
 
             kwargs (dict, optional): Extra parameters to pass to the model via API.
                 See Completions.create in OpenAI API, but in short, these:
@@ -107,7 +116,10 @@ class struct_mlx_chat_api(model_manager):
         '''
         # Uncomment for test case construction
         # print('MESSAGES', messages, '\n', 'SCHEMA', schema, '\n', 'TOOLS', tools)
-        tools = tools or {}
+        toolset = toolset or {}
+        req_tools = self._resolve_tools(toolset)
+        req_tool_spec = [ s for f, s in req_tools.values() ]
+
         if max_trips < 1:
             raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
         schema = schema or self.default_schema
@@ -124,19 +136,14 @@ class struct_mlx_chat_api(model_manager):
             req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
             resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
 
-        elif tools or self._tool_schema_stanzs:
-            tools_list = tools.get('tools', [])
-            combined_tools = self._tool_schema_stanzs + tools_list
-            # print(f'{combined_tools=}')
-            # req_data['tools'] = tools['tools']
-            req_data['tool_choice'] = tools.get('tool_choice', TOOL_CHOICE_AUTO)
-            if tools_list and req_data['tool_choice'] == TOOL_CHOICE_NONE:
+        elif toolset or self._tool_schema_stanzs:
+            req_data['tool_choice'] = tool_choice
+            if req_tools and tool_choice == TOOL_CHOICE_NONE:
                 warnings.warn('Tools were provided, but tool_choise was set so they\'ll never be used')
-            if 'tool_options' in tools:
-                req_data['tool_options'] = tools['tool_options']
-            for t in tools_list:
-                self.register_tool(t['function']['name'], t['function'].get('pyfunc'))
-            req_data['tools'] = combined_tools
+            # if tool_options: req_data['tool_options'] = tool_options
+            # for t in tools_list:
+            #     self.register_tool(t['function']['name'], t['function'].get('pyfunc'))
+            req_data['tools'] = [ {'type': 'function', 'function': t} for t in req_tool_spec ]
 
             # Enter tool-calling sequence
             llm_call_needed = True
@@ -152,15 +159,16 @@ class struct_mlx_chat_api(model_manager):
                     if not max_trips:
                         # If there are no more available trips, don't bother calling the tools
                         return resp
-                    tool_responses = await self._execute_tool_calls(resp)
+                    tool_responses = await self._execute_tool_calls(resp, req_tools)
                     for call_id, callee_name, result in tool_responses:
                         model_type = resp.get(TOOLIO_MODEL_TYPE_FIELD)
                         model_flags = FLAGS_LOOKUP.get(model_type, DEFAULT_MODEL_FLAGS)
                         # print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
                         if not model_flags:
                             warnings.warn(f'Unknown model type {model_type} specified by server. Likely client/server version skew')
-                        # FIXME: Separate out natural language
+                        logging.info(f'{messages=}')
                         set_tool_response(messages, call_id, callee_name, str(result), model_flags)
+                        logging.info(f'{messages=}')
                         if tool_flag.REMOVE_USED_TOOLS in self._flags:
                             # Many FLOSS LLMs get confused if they see a tool definition still in the response back
                             # And loop back with a new tool request. Remove it to avoid this.
@@ -185,7 +193,7 @@ class struct_mlx_chat_api(model_manager):
 
     async def _http_trip(self, req, req_data, timeout, apikey, **kwargs):
         '''
-        Single call/response to MLXStructuredLMServer. Multiple might be involved in a single tool-calling round
+        Single call/response to toolio_server. Multiple might be involved in a single tool-calling round
         '''
         header = {'Content-Type': 'application/json'}
         # if apikey is None:

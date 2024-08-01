@@ -8,7 +8,7 @@ Toolio client convenient CLI tool
 import sys
 import json
 import asyncio
-import importlib
+# import importlib
 
 import click
 from ogbujipt.llm_wrapper import prompt_to_chat
@@ -68,14 +68,28 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
         tools_obj = None
 
     # Import & register any tools
-    tool_callables = []
-    for tpath in tool:
-        modpath, call_name  = tpath.rsplit('.', 1)
-        modobj = importlib.import_module(modpath)
-        tool_callables.append(getattr(modobj, call_name))
+    # tool_callables = []
+    if isinstance(tools_obj, list):
+        tools_list = tools_obj
+    elif isinstance(tools_obj, dict):
+        try:
+            tools_list = [ (t['function'].get('pyfunc'), t['function']) for t in tools_obj['tools'] ]
+            for a, b in tools_list:
+                del b['pyfunc']
+        except KeyError:
+            raise ValueError('Malformed tools dictionary {tools_obj}')
+        tool_choice = tools_obj.get('tool_choice', 'auto')
+        toolset = [ t[1]['name'] for t in tools_list ]
+    else:
+        raise ValueError('Invalid tools list {tools_obj}')
 
-    llm = struct_mlx_chat_api(base_url=apibase, tools=tool_callables, trace=trace)
-    resp = asyncio.run(llm(prompt_to_chat(prompt, system=sysprompt), schema=schema_obj, tools=tools_obj,
+    # for tpath in tools_obj:
+    #     modpath, call_name  = tpath.rsplit('.', 1)
+    #     modobj = importlib.import_module(modpath)
+    #     tool_callables.append(getattr(modobj, call_name))
+
+    llm = struct_mlx_chat_api(base_url=apibase, tool_reg=tools_list, trace=trace)
+    resp = asyncio.run(llm(prompt_to_chat(prompt, system=sysprompt), schema=schema_obj, toolset=toolset,
                            max_trips=max_trips, trip_timeout=trip_timeout))
     if resp['response_type'] == response_type.TOOL_CALL:
         print('The model invoked the following tool calls to complete the response, but there are no permitted trips remaining.')

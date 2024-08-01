@@ -31,6 +31,8 @@ class model_flag(Flag):
 
 DEFAULT_FLAGS = model_flag(0)
 
+TOOL_CHOICE_AUTO = 'auto'
+TOOL_CHOICE_NONE = 'none'
 
 # {model_class: flags}, defaults to DEFAULT_FLAGS
 FLAGS_LOOKUP = {
@@ -79,7 +81,7 @@ class model_manager:
         self._trace = trace
         self._remove_used_tools = remove_used_tools
         self._tool_registry = {}
-        # Prepare the library of tools
+        # Prepare library of tools
         for toolspec in tool_reg:
             if isinstance(toolspec, tuple):
                 funcpath_or_obj, schema = toolspec
@@ -151,10 +153,10 @@ class model_manager:
     # Seems streaming is not quite yet working
     # async def complete_with_tools(self, messages, toolset, stream=True, max_trips=3, tool_choice=None,
     #                               max_tokens=128, temperature=0.1):
-    async def complete_with_tools(self, messages, toolset, stream=False, max_trips=3, tool_choice=None,
+    async def complete_with_tools(self, messages, toolset, stream=False, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
                                   max_tokens=128, temperature=0.1):
         '''
-        Make a chat completeion with tools, then continue to iterate completions as long as the LLM
+        Make a chat completion with tools, then continue to iterate completions as long as the LLM
         is using at least one tool, or until max_trips are exhausted
 
         toolset (list) - tools specified for this request, presumably a subset of overall tool registry.
@@ -339,6 +341,7 @@ def set_tool_response(msgs, tool_call_id, tool_name, tool_result, model_flags=DE
             'content': tool_result,
         })
     else:
+        # FIXME: Separate out natural language
         tool_response_text = f'Result of the call to {tool_name}: {tool_result}'
         if model_flag.USER_ASSISTANT_ALT in model_flags:
             # If there is already an assistant msg from tool-calling, merge it
