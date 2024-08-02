@@ -3,4 +3,4 @@
 # SPDX-License-Identifier: Apache-2.0
 # ogbujipt.about
 
-__version__ = '0.3.2'
+__version__ = '0.4.0'

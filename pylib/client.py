@@ -240,7 +240,7 @@ def cmdline_tools_struct(tools_obj):
     elif isinstance(tools_obj, str):
         tools_list = [tools_obj]
     else:
-        tools_list = tools_obj
+        tools_list = tools_obj or []
     new_tools_list = []
     for t in tools_list:
         if isinstance(t, dict):

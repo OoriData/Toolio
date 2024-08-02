@@ -316,7 +316,6 @@ Notice there is more information, now that it's finished (`'finish_reason': 'sto
 
 ```py
 import asyncio
-from itertools import tee
 from toolio.llm_helper import model_manager, extract_content
 
 toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
@@ -350,7 +349,6 @@ As mentioned, you can specify tools and schemata.
 
 ```py
 import asyncio
-from itertools import tee
 from toolio.llm_helper import model_manager, extract_content
 
 toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
@@ -372,7 +370,6 @@ asyncio.run(say_hello(toolio_mm))
 ```py
 import asyncio
 from math import sqrt
-from itertools import tee
 from toolio.llm_helper import model_manager, extract_content
 
 SQUARE_ROOT_METADATA = {'name': 'square_root', 'description': 'Get the square root of the given number',

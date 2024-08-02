@@ -37,28 +37,32 @@ async def amain(mm):
     # Pydantic form
     # tools = [V1Function(name='square_root', description='Get the square root of the given number', parameters={'type': 'object', 'properties': {'square': {'type': 'number', 'description': 'Number from which to find the square root'}}, 'required': ['square']})]
     msgs = [ {'role': 'user', 'content': prompt} ]
-    async for chunk in mm.complete(msgs):
-        content = chunk['choices'][0]['delta']['content']
-        if content is not None:
-            print(content, end='')
+    async for chunk in extract_content(mm.complete_with_tools(msgs, toolset=['square_root'], tool_choice='auto')):
+        print(chunk, end='')
 
-    # Final chunk has the stats
     print('\n', '='*40, 'Square root of 256, pt 2')
+    # Actually we'll want to use pt 2 to test the Pydantic function reg form
+    mm.clear_tools()
+    mm.register_tool(sqrt, schema=SQUARE_ROOT_METADATA)
 
     async for chunk in extract_content(mm.complete_with_tools(msgs, toolset=['square_root'], tool_choice='auto')):
         print(chunk, end='')
 
-    # async for chunk in extract_content(mm.complete_with_tools(msgs, toolset=['square_root'], tool_choice='auto')):
-    #     print(chunk, end='')
+    print('\n', '='*40, 'Usain bolt')
 
-    print('\n', '='*80)
+    from toolio.tool.math import calculator
+    prompt='Usain Bolt ran the 100m race in 9.58s. What was his average velocity?'
+    mm.register_tool(calculator)
+    msgs = [ {'role': 'user', 'content': prompt} ]
 
-    # mm.register_tool(name, toolobj)
+    async for chunk in extract_content(mm.complete_with_tools(msgs, toolset=['calculator'])):
+        print(chunk, end='')
 
-    # mm.chat_complete(msgs, functions=None, stream=True, json_response=None, json_schema=None,
-    #                         max_tokens=128, temperature=0.1)
+    print('\n', '='*40, 'END CHECK')
 
 model = sys.argv[1]
+
+# Checking tool registration within the model manager initialization
 SQUARE_ROOT_METADATA = {'name': 'square_root',
                             'description': 'Get the square root of the given number',
                             'parameters': {'type': 'object', 'properties': {
@@ -79,7 +83,7 @@ from math import sqrt  # noqa: E402
 # each tool is either a callable with built-in metadata, or a tuple of (func, metadata)
 TOOLS = [(sqrt, SQUARE_ROOT_METADATA)]
 
-mm = model_manager(model, tool_reg=TOOLS)
+mm = model_manager(model, tool_reg=TOOLS, trace=True)
 print('Model type:', mm.model_type)
 
 resp = asyncio.run(amain(mm))

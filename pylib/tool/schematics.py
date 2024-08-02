@@ -38,7 +38,9 @@ def tool(name, desc=None, params=None):
             if p.rename:
                 renames[p.name] = p.rename
         # Description can come from the docstring, or be overridden by kwarg
-        _desc = desc or textwrap.dedent(func.__doc__)
+        _desc = desc or ( textwrap.dedent(func.__doc__) if func.__doc__ is not None else None )
+        if not _desc:
+            raise ValueError('No description found for tool, either via docstring or parameter')
 
         schema = {'name': name, 'description': _desc,
                   'parameters': {'type': 'object', 'properties': schema_params, 'required': required_list}}

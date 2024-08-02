@@ -182,12 +182,15 @@ class model_manager:
             # 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'}
             async for resp in self._completion_trip(messages, stream, req_tool_spec, max_tokens=max_tokens,
                                                     temperature=temperature):
-                if first_chunk and 'tool_calls' in resp['choices'][0]['message']:
-                # if first_chunk and 'tool_calls' in resp['choices'][0]['delta']:
-                    tool_call_resp = resp
-                else:
-                    assert 'delta' in resp['choices'][0]
-                    yield resp
+                resp_msg = resp['choices'][0]['message']
+                # resp_msg can be None e.g. if generation finishes due to length
+                if resp_msg:
+                    if first_chunk and 'tool_calls' in resp_msg:
+                    # if first_chunk and 'tool_calls' in resp['choices'][0]['delta']:
+                        tool_call_resp = resp
+                    else:
+                        assert 'delta' in resp['choices'][0]
+                        yield resp
                 first_chunk = False
             if tool_call_resp:
                 max_trips -= 1
@@ -215,6 +218,10 @@ class model_manager:
     @property
     def toolset(self):
         return self._tool_registry.keys()
+
+    def clear_tools(self):
+        'Remove all tools from registry'
+        self._tool_registry = {}
 
     def _resolve_tools(self, toolset):
         'Narrow down & process list of tools to the ones specified on this request'
