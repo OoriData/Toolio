@@ -116,7 +116,7 @@ class struct_mlx_chat_api(model_manager):
         '''
         # Uncomment for test case construction
         # print('MESSAGES', messages, '\n', 'SCHEMA', schema, '\n', 'TOOLS', toolset)
-        toolset = toolset or {}
+        toolset = toolset or self.toolset
         req_tools = self._resolve_tools(toolset)
         req_tool_spec = [ s for f, s in req_tools.values() ]
 
@@ -148,7 +148,6 @@ class struct_mlx_chat_api(model_manager):
             # Enter tool-calling sequence
             llm_call_needed = True
             while max_trips > 0 and llm_call_needed:
-                print(f'{req_data=}')
                 # If the tools list is empty (perhaps we removed the last one in a prev loop), omit it entirely
                 if 'tools' in req_data and not req_data['tools']:
                     del req_data['tools']
@@ -238,11 +237,16 @@ def cmdline_tools_struct(tools_obj):
     'Specifying a function on the command line calls for its own format. Processes it for model managers'
     if isinstance(tools_obj, dict):
         tools_list = tools_obj['tools']
-    try:
-        tools_list = [ (t['function'].get('pyfunc'), t['function']) for t in tools_obj ]
-        for _, t in tools_list:
-            del t['pyfunc']
-    except KeyError:
-        raise ValueError(f'Malformed tools dictionary {tools_obj}')
-    toolset = [ t[1]['name'] for t in tools_list ]
-    return (tools_list, toolset)
+    elif isinstance(tools_obj, str):
+        tools_list = [tools_obj]
+    else:
+        tools_list = tools_obj
+    new_tools_list = []
+    for t in tools_list:
+        if isinstance(t, dict):
+            tf = t['function']
+            new_tools_list.append((tf.get('pyfunc'), tf))
+            if 'pyfunc' in tf: del tf['pyfunc']   # noqa: E701
+        else:
+            new_tools_list.append(t)
+    return new_tools_list

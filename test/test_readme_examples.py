@@ -87,10 +87,10 @@ async def test_square_root(httpserver, session_cls):
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(square_root_ht.intermed_resp_jsons[0])
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(square_root_ht.resp_json)
 
-    (tools_list, toolset) = cmdline_tools_struct(square_root_ht.req_tools)
+    tools_list = cmdline_tools_struct(square_root_ht.req_tools)
     # tool_choice = tools_obj.get('tool_choice', 'auto')
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'), tool_reg=tools_list)
-    resp = await llm(square_root_ht.req_messages, toolset=toolset)
+    resp = await llm(square_root_ht.req_messages, toolset=llm.toolset)
     assert resp['response_type'] == square_root_ht.resp_type
     assert resp.first_choice_text == square_root_ht.resp_text
 

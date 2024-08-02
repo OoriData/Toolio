@@ -242,8 +242,7 @@ def currency_exchange(from_=None, to=None, amount=None):
 
 prompt = 'I need to import a car from Japan. It costs 5 million Yen.'
 'How much must I withdraw from my US bank account'
-tool_callables = [currency_exchange]
-llm = struct_mlx_chat_api(base_url='http://localhost:8000', tools=tool_callables, trace=True)
+llm = struct_mlx_chat_api(base_url='http://localhost:8000', tool_reg=[currency_exchange], trace=True)
 resp = asyncio.run(llm(prompt_to_chat(prompt), trip_timeout=60))
 print(resp.first_choice_text)
 ```
@@ -266,7 +265,7 @@ toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
-    async for chunk in extract_content(tmm.chat_complete(msgs)):
+    async for chunk in extract_content(tmm.complete(msgs)):
         print(chunk, end='')
 
 asyncio.run(say_hello(toolio_mm))
@@ -290,7 +289,7 @@ toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
-    async for chunk_struct in tmm.chat_complete(msgs):
+    async for chunk_struct in tmm.complete(msgs):
         print(chunk_struct)
         break
 
@@ -324,7 +323,7 @@ toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
-    async for chunk in tmm.chat_complete(msgs):
+    async for chunk in tmm.complete(msgs):
         content = chunk['choices'][0]['delta']['content']
         if content is not None:
             print(content, end='')
@@ -362,7 +361,7 @@ async def say_hello(tmm):
     schema = ('{"type": "array", "items":'
               '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}')
     msgs = [{'role': 'user', 'content': prompt.format(json_schema=schema)}]
-    async for chunk in extract_content(tmm.chat_complete(msgs, json_schema=schema)):
+    async for chunk in extract_content(tmm.complete(msgs, json_schema=schema)):
         print(chunk, end='')
 
 asyncio.run(say_hello(toolio_mm))
@@ -372,21 +371,25 @@ asyncio.run(say_hello(toolio_mm))
 
 ```py
 import asyncio
+from math import sqrt
 from itertools import tee
 from toolio.llm_helper import model_manager, extract_content
 
-toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+SQUARE_ROOT_METADATA = {'name': 'square_root', 'description': 'Get the square root of the given number',
+                            'parameters': {'type': 'object', 'properties': {
+                                'square': {'type': 'number',
+                                'description': 'Number from which to find the square root'}},
+                            'required': ['square']}}
+toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
+                          tool_reg=[(sqrt, SQUARE_ROOT_METADATA)], trace=True)
 
 
-async def say_hello(tmm):
-    msgs = [ {'role': 'user', 'content': 'What is the square root of 256?'} ]
-    tools = [{'name': 'square_root', 'description': 'Get the square root of the given number',
-             'parameters': {'type': 'object', 'properties': {'square': {'type': 'number',
-             'description': 'Number from which to find the square root'}}, 'required': ['square']}}]
-    async for chunk in extract_content(tmm.chat_complete(msgs, tools=tools)):
+async def query_sq_root(tmm):
+    msgs = [ {'role': 'user', 'content': 'What is the square root of 256?'} ]    
+    async for chunk in extract_content(tmm.complete_with_tools(msgs)):
         print(chunk, end='')
 
-asyncio.run(say_hello(toolio_mm))
+asyncio.run(query_sq_root(toolio_mm))
 ```
 
 # Credits

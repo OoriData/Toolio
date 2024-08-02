@@ -82,12 +82,12 @@ class model_manager:
         self._remove_used_tools = remove_used_tools
         self._tool_registry = {}
         # Prepare library of tools
-        for toolspec in tool_reg:
+        for toolspec in (tool_reg or []):
             if isinstance(toolspec, tuple):
                 funcpath_or_obj, schema = toolspec
                 self.register_tool(funcpath_or_obj, schema)
             else:
-                self.register_tool(funcpath_or_obj)
+                self.register_tool(toolspec)
 
     def register_tool(self, funcpath_or_obj, schema=None):
         '''
@@ -108,8 +108,11 @@ class model_manager:
             warnings.warn(f'No implementation provided for function: {getattr(funcobj, "name", "UNNAMED")}')
         elif isinstance(funcpath_or_obj, str):
             funcpath = funcpath_or_obj
-            # pyfunc is in the form 'path.to.module_to_import|path.to.function'
-            modpath, funcpath = funcpath.split('|')
+            if '|' in funcpath:
+                # pyfunc is in the form 'path.to.module_to_import|path.to.function'
+                modpath, funcpath = funcpath.split('|')
+            else:
+                modpath, funcpath = funcpath.rsplit('.', 1)
             modobj = importlib.import_module(modpath)
             parent = modobj
             for funcname in funcpath.split('.'):
@@ -153,7 +156,7 @@ class model_manager:
     # Seems streaming is not quite yet working
     # async def complete_with_tools(self, messages, toolset, stream=True, max_trips=3, tool_choice=None,
     #                               max_tokens=128, temperature=0.1):
-    async def complete_with_tools(self, messages, toolset, stream=False, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
+    async def complete_with_tools(self, messages, toolset=None, stream=False, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
                                   max_tokens=128, temperature=0.1):
         '''
         Make a chat completion with tools, then continue to iterate completions as long as the LLM
@@ -164,6 +167,7 @@ class model_manager:
             tool-calling format stanza, in which case, for this request, only the implementaton is used
             from the initial registry
         '''
+        toolset = toolset or self.toolset
         req_tools = self._resolve_tools(toolset)
         req_tool_spec = [ s for f, s in req_tools.values() ]
 
@@ -207,6 +211,10 @@ class model_manager:
                 async for resp in self.complete(messages, stream=stream, max_tokens=max_tokens, temperature=temperature):
                     yield resp
                 break
+
+    @property
+    def toolset(self):
+        return self._tool_registry.keys()
 
     def _resolve_tools(self, toolset):
         'Narrow down & process list of tools to the ones specified on this request'
