@@ -23,6 +23,7 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 - Have responders return actual dicts, rather than label + JSON dump
 - Factor out HTTP protocol schematics to a new module
 - Handle more nuances of tool-calling tokenizer setup
+- Harmonize tool definition patterns across invocation styles
 
 ### Fixed
 
