@@ -22,7 +22,7 @@ The following video, "Toolio in 10 minutes", is an easy way to learn about the p
 <img width="1268" alt="Toolio in 10 minutes still" src="https://github.com/user-attachments/assets/fc8dda94-326d-426e-a566-ac8ec60be31f">
 -->
 
-`toolio_server` is a FastAPI program that you can use to host MLX-format LLMs for structured output query, for example, if you are on  you can use the MLX format LLM model `mlx-community/Hermes-2-Theta-Llama-3-8B-4bit` as follows (from the cloned directory of this repository):
+`toolio_server` is a FastAPI program that you can use to host MLX-format LLMs for structured output query or function-calling. For example to host the MLX format LLM model `mlx-community/Hermes-2-Theta-Llama-3-8B-4bit` as follows (from the cloned directory of this repository):
 
 # Installation and Setup
 
@@ -33,7 +33,7 @@ toolio_server --model=mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
 
 This will download the model (a little over 4GB) to your local HuggingFace disk cache, and running it will take up about that much of your unified RAM.
 
-For more on the MLX framework for ML workloads (including LLMs) on Apple Silicon, see the [MLX Notes](https://github.com/uogbuji/mlx-notes) article series. The "Day One" article provides all the context you need for using local LLMs through this project.
+For more on the MLX framework for ML workloads (including LLMs) on Apple Silicon, see the [MLX Notes](https://github.com/uogbuji/mlx-notes) article series. The "Day One" article provides all the context you need for using local LLMs with Toolio.
 
 # cURLing the Toolio server
 
@@ -91,7 +91,7 @@ toolio_request --apibase="http://localhost:8000" --prompt-file=/tmp/llmprompt.tx
 
 ## Tool calling
 
-You can also run tool usage (function-calling) prompts, a key technique in LLM agent frameworks. A schema will automatically be generated from the tool specs
+You can run tool usage (function-calling) prompts, a key technique in LLM agent frameworks. A schema will automatically be generated from the tool specs, which themselves are based on [JSON Schema](https://json-schema.org/), according to OpenAI conventions.
 
 ```sh
 echo 'What'\''s the weather like in Boulder today?' > /tmp/llmprompt.txt
@@ -388,6 +388,10 @@ async def query_sq_root(tmm):
 
 asyncio.run(query_sq_root(toolio_mm))
 ```
+
+# More examples
+
+See the `demo` directory.
 
 # Credits
 

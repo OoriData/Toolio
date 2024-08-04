@@ -9,6 +9,7 @@ import inspect
 import functools
 import textwrap
 from dataclasses import dataclass
+from enum import Enum
 
 
 @dataclass
@@ -30,8 +31,15 @@ def tool(name, desc=None, params=None):
         required_list = []
         for p in params:
             # Translate type designation to JSON Schema, if need be
-            typ = TYPES_LOOKUP.get(p.typ, p.typ)
-            schema_params[p.name] = {'type': typ, 'description': p.desc}
+            typ = TYPES_LOOKUP.get(p.typ)
+            if typ:
+                schema_params[p.name] = {'type': typ, 'description': p.desc}
+            else:
+                typ = complex_type(p.typ)
+                if isinstance(typ, dict):
+                    schema_params[p.name] = {'description': p.desc, **typ}
+                else:
+                    raise RuntimeError('Unable to determine param type')
             params_lookup[p.name] = p
             if p.required:
                 required_list.append(p.name)
@@ -75,4 +83,16 @@ TYPES_LOOKUP = {
     int: 'number',
     float: 'number',
     bool: 'boolean',
+    'string': 'string',
+    'number': 'number',
+    'boolean': 'boolean',
     }
+
+
+def complex_type(typ):
+    if issubclass(typ, Enum):
+        # Worth being aware of typ._member_names_ & typ._member_map_
+        return {'type': 'string', 'enum': [ e.value for e in typ ]}
+    else:
+        return None
+
