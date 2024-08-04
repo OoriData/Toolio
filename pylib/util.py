@@ -6,6 +6,7 @@
 Utility support functions (but not tools 😆) for Toolio
 '''
 import asyncio
+import inspect
 import types
 from typing import Any
 
@@ -26,9 +27,9 @@ def check_callable(obj: Any):
         return True, False
 
     if isinstance(obj, types.FunctionType):
-        return True, asyncio.iscoroutinefunction(obj)
+        return True, inspect.iscoroutinefunction(obj)
 
     if hasattr(obj, '__call__'):
-        return True, asyncio.iscoroutinefunction(obj.__call__)
+        return True, inspect.iscoroutinefunction(obj.__call__)
 
     raise RuntimeError(f'Unexpected case: Callable, yet not having a __call__ method: {obj=}')

@@ -5,7 +5,7 @@
 '''
 Constructs to help define tool calls, and their schema, for use with tool calling flows
 '''
-
+import inspect
 import functools
 import textwrap
 from dataclasses import dataclass
@@ -46,14 +46,24 @@ def tool(name, desc=None, params=None):
                   'parameters': {'type': 'object', 'properties': schema_params, 'required': required_list}}
 
         @functools.wraps(func)
-        def tool_inner(*args, **kwargs):
+        def tool_inner_prep(*args, **kwargs):
             # Invoke-time setup code
             processed_kwargs = {}
             for (k, v) in kwargs.items():
                 typ = params_lookup[k].typ
                 processed_kwargs[renames.get(k, k)] = typ(v)
-            value = func(*args, **processed_kwargs)
-            return value
+            return processed_kwargs
+        # Tool functions can be classic, or coroutines (async def); handle both cases
+        if inspect.iscoroutinefunction(func):
+            async def tool_inner(*args, **kwargs):
+                processed_kwargs = tool_inner_prep(*args, **kwargs)
+                retval = await func(*args, **processed_kwargs)
+                return retval
+        else:
+            def tool_inner(*args, **kwargs):
+                processed_kwargs = tool_inner_prep(*args, **kwargs)
+                retval = func(*args, **processed_kwargs)
+                return retval
         tool_inner.schema = schema
         tool_inner.name = name
         return tool_inner

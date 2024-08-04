@@ -30,6 +30,7 @@ dependencies = [
   "fastapi",
   "click",
   "httpx",
+  "uvicorn",
   # "amara3.iri"
 ]
 
