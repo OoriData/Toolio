@@ -14,15 +14,16 @@ toolio_server --model=mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
 Note: you can also point `--model` at a downloaded or converted MLX model on local storage.
 '''
 
+import os
 import json
 import time
-import os
 from contextlib import asynccontextmanager
 import warnings
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 import click
 import uvicorn
 
@@ -30,11 +31,12 @@ from llm_structured_output.util.output import info, warning, debug
 
 from toolio.schema_helper import Model
 from toolio.llm_helper import enrich_chat_for_tools, DEFAULT_FLAGS, FLAGS_LOOKUP
-from toolio.http_schematics import V1ChatCompletionsRequest, V1ChatMessage, V1ResponseFormatType
+from toolio.http_schematics import V1ChatCompletionsRequest, V1ResponseFormatType
 from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
                               ChatCompletionResponder, ChatCompletionStreamingResponder)
 
 
+NUM_CPUS = int(os.cpu_count())
 app_params = {}
 
 # Context manager for the FastAPI app's lifespan: https://fastapi.tiangolo.com/advanced/events/
@@ -57,6 +59,9 @@ async def lifespan(app: FastAPI):
     # print(app.state.model.model.__class__, app.state.model.model.model_type)
     info(f'Model loaded in {(tdone - tstart)/1000000000.0:.3f}s. Type: {app.state.model.model.model_type}')
     app.state.model_flags = FLAGS_LOOKUP.get(app.state.model.model.model_type, DEFAULT_FLAGS)
+    # Look into exposing control over methods & headers as well
+    app.add_middleware(CORSMiddleware, allow_origins=app_params['cors_origins'], allow_credentials=True,
+                       allow_methods=["*"], allow_headers=["*"])
     yield
     # Shutdown code here, if any
 
@@ -199,7 +204,29 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
     help='Path to JSON schema to be used if not provided via API call.'
          'Interpolated into {jsonschema} placeholder in prompts')
 @click.option('--llmtemp', default='0.1', type=float, help='LLM sampling temperature')
-def main(host, port, model, default_schema, default_schema_file, llmtemp):
+@click.option('--workers', type=int, default=0,
+              help='Number of workers processes to spawn (each utilizes one CPU core).'
+              'Defaults to $WEB_CONCURRENCY environment variable if available, or 1')
+@click.option('--cors_origin', multiple=True,
+              help='Origin to be permitted for CORS https://fastapi.tiangolo.com/tutorial/cors/')
+def main(host, port, model, default_schema, default_schema_file, llmtemp, workers, cors_origin):
     app_params.update(model=model, default_schema=default_schema, default_schema_fpath=default_schema_file,
-                      llmtemp=llmtemp)
-    uvicorn.run('toolio.cli.server:app', host=host, port=port, reload=False)
+                      llmtemp=llmtemp, cors_origins=list(cors_origin))
+    workers = workers or None
+    # logger.info(f'Host has {NUM_CPUS} CPU cores')
+    uvicorn.run('toolio.cli.server:app', host=host, port=port, reload=False, workers=workers)
+
+
+# Implement log config when we 
+def UNUSED_log_setup(config):
+    # Set up logging
+    import logging
+    global logger  # noqa: PLW0603
+
+    main_loglevel = config.get('log', {'level': 'INFO'})['level']
+    logging.config.dictConfig(config['log'])
+    # Following 2 lines configure the root logger, so all other loggers in this process space will inherit
+    # logging.basicConfig(level=main_loglevel, format='%(levelname)s:%(name)s: %(message)s')
+    logging.getLogger().setLevel(main_loglevel)  # Seems redundant, but is necessary. Python logging is quirky
+    logger = logging.getLogger(__name__)
+    # logger.addFilter(LocalFilter())

@@ -20,7 +20,8 @@ def calculator(expr=None):
     '''
     Make an arithmetical, mathematical calculation, using operations such as addition (+), subtraction (-),
     multiplication (*), and division (/). Don't forget to use parenthesis for grouping.
-    **Always use this tool for calculations. Never try to do them yourself**.
+    **Always use this tool for calculations. Never try to do them yourself. Only use numbers and operators.
+    Do not include units in numbers!**.
     '''
     # print(repr(expr))
     if not ALLOWED_EXPR_PAT.match(expr):
