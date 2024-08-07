@@ -1,3 +1,4 @@
+# resource/language.toml
 # Word loom format. Top level lang is default for this file
 # https://github.com/OoriData/OgbujiPT/wiki/Word-Loom:-A-format-for-managing-language-for-AI-LLMs-(including-prompts)
 lang = "en"

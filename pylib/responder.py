@@ -9,8 +9,9 @@ Marshalling sreaming & non-streaming responses from LLMs
 import json
 import time
 
-from toolio import LANG, TOOLIO_MODEL_TYPE_FIELD
+from toolio import TOOLIO_MODEL_TYPE_FIELD
 from toolio.http_schematics import V1Function
+from toolio.prompt_helper import process_tool_sysmsg
 
 
 class ChatCompletionResponder:
@@ -119,29 +120,12 @@ class ToolCallResponder(ChatCompletionResponder):
     > 3. Parse the string into JSON in your code, and call your function with the provided arguments if they exist.
     > 4. Call the model again by appending the function response as a new message, and let the model summarize the results back to the user.
     '''
-    def __init__(self, model_name: str, model_type: str, tools: list[dict], sysmsg_leadin: str | None = None):
+    def __init__(self, model_name: str, model_type: str, schema, sysmsg):
         super().__init__(model_name, model_type)
-        self.sysmsg_leadin = sysmsg_leadin
-
-        tools = [ (t.dictify() if isinstance(t, V1Function) else t) for t in tools ]
-        function_schemas = [
-            {
-                'type': 'object',
-                'properties': {
-                    'name': {'type': 'const', 'const': fn['name']},
-                    'arguments': fn['parameters'],
-                },
-                'required': ['name', 'arguments'],
-            }
-            for fn in tools
-        ]
-        if len(function_schemas) == 1:
-            self.schema = function_schemas[0]
-            self.tool_prompt = self._one_tool_prompt(tools[0], function_schemas[0])
-        else:
-            self.schema = {'type': 'array', 'items': {'anyOf': function_schemas}}
-            self.tool_prompt = self._multiple_tool_prompt(tools, function_schemas)
-        # print(f'{self.tool_prompt=}')
+        self.schema = schema
+        self.tool_sysmsg = sysmsg
+        import sys
+        print(f'🧰 Tool {schema=}\n{sysmsg=}', file=sys.stderr)
 
     def translate_reason(self, reason):
         if reason == 'end':
@@ -194,42 +178,11 @@ class ToolCallResponder(ChatCompletionResponder):
             **self.message_properties(),
         }
 
-    def _one_tool_prompt(self, tool, tool_schema):
-        leadin = self.sysmsg_leadin or LANG['one_tool_prompt_leadin']
-        return f'''
-{leadin} {tool["name"]}: {tool["description"]}
-{LANG["one_tool_prompt_schemalabel"]}: {json.dumps(tool_schema)}
-{LANG["one_tool_prompt_tail"]}
-'''
-
-    def _multiple_tool_prompt(self, tools, tool_schemas, separator='\n', leadin=None):
-        leadin = self.sysmsg_leadin or LANG['multi_tool_prompt_leadin']
-        toollist = separator.join(
-            [f'\nTool {tool["name"]}: {tool["description"]}\nInvocation schema: {json.dumps(tool_schema)}\n'
-                for tool, tool_schema in zip(tools, tool_schemas) ])
-        return f'''
-{leadin}
-{toollist}
-{LANG["multi_tool_prompt_tail"]}
-'''
-
-    def _select_tool_prompt(self, tools, tool_schemas, separator='\n', leadin=None):
-        leadin = self.sysmsg_leadin or LANG['multi_tool_prompt_leadin']
-        toollist = separator.join(
-            [f'\n{LANG["select_tool_prompt_toollabel"]} {tool["name"]}: {tool["description"]}\n'
-             f'{LANG["select_tool_prompt_schemalabel"]}: {json.dumps(tool_schema)}\n'
-                for tool, tool_schema in zip(tools, tool_schemas) ])
-        return f'''
-{leadin}
-{toollist}
-{LANG["select_tool_prompt_tail"]}
-'''
-
 
 class ToolCallStreamingResponder(ToolCallResponder):
-    def __init__(self, model, model_name: str, tools: list[dict], sysmsg_leadin: str | None = None):
+    def __init__(self, model, model_name: str, tools: list[dict], schema, sysmsg):
         model_type = model.model.model_type
-        super().__init__(model_name, model_type, tools, sysmsg_leadin)
+        super().__init__(model_name, model_type, schema, sysmsg)
         self.object_type = 'chat.completion.chunk'
 
         # We need to parse the output as it's being generated in order to send
@@ -250,7 +203,6 @@ class ToolCallStreamingResponder(ToolCallResponder):
         def end_function_arguments(_prop_name: str, _prop_value: str):
             self.in_function_arguments = False
 
-        tools = ( (t.dictify() if isinstance(t, V1Function) else t) for t in tools )
         hooked_function_schemas = [
             {
                 'type': 'object',

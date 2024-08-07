@@ -4,6 +4,7 @@
 # # toolio
 
 from pathlib import Path  # noqa: E402
+from enum import Flag, auto
 
 from ogbujipt import word_loom
 from toolio import __about__
@@ -27,3 +28,12 @@ def obj_file_path_parent(obj):
 HERE = obj_file_path_parent(lambda: 0)
 with open(HERE / Path('resource/language.toml'), mode='rb') as fp:
     LANG = word_loom.load(fp)
+
+
+class model_flag(Flag):
+    NO_SYSTEM_ROLE = auto()  # e.g. Gemma blows up if you use a system message role
+    USER_ASSISTANT_ALT = auto()  # Model requires alternation of message roles user/assistant only
+    TOOL_RESPONSE = auto()  # Model expects responses from tools via OpenAI API style messages
+
+
+DEFAULT_FLAGS = model_flag(0)

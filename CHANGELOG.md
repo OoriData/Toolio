@@ -7,6 +7,20 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
+## [0.4.2] - 20240807
+
+### Added
+
+- notes on how to override prompting
+
+### Changed
+
+- processing for function-calling system prompts
+
+### Fixed
+
+- server startup 😬
+
 ## [0.4.1] - 20240806
 
 ### Added

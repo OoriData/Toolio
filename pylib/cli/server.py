@@ -30,7 +30,9 @@ import uvicorn
 from llm_structured_output.util.output import info, warning, debug
 
 from toolio.schema_helper import Model
-from toolio.llm_helper import enrich_chat_for_tools, DEFAULT_FLAGS, FLAGS_LOOKUP
+from toolio.http_schematics import V1Function
+from toolio.prompt_helper import enrich_chat_for_tools, process_tool_sysmsg
+from toolio.llm_helper import DEFAULT_FLAGS, FLAGS_LOOKUP
 from toolio.http_schematics import V1ChatCompletionsRequest, V1ResponseFormatType
 from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
                               ChatCompletionResponder, ChatCompletionStreamingResponder)
@@ -60,8 +62,6 @@ async def lifespan(app: FastAPI):
     info(f'Model loaded in {(tdone - tstart)/1000000000.0:.3f}s. Type: {app.state.model.model.model_type}')
     app.state.model_flags = FLAGS_LOOKUP.get(app.state.model.model.model_type, DEFAULT_FLAGS)
     # Look into exposing control over methods & headers as well
-    app.add_middleware(CORSMiddleware, allow_origins=app_params['cors_origins'], allow_credentials=True,
-                       allow_methods=["*"], allow_headers=["*"])
     yield
     # Shutdown code here, if any
 
@@ -129,7 +129,7 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
 
     model_name = app.state.params['model']
     model_type = app.state.model.model.model_type
-    schema = None
+    schema = None  # Steering for the LLM output (JSON schema)
     if functions:
         if req_data.sysmsg_leadin:  # Caller provided sysmsg leadin via protocol
             leadin = req_data.sysmsg_leadin
@@ -138,14 +138,15 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
             del messages[0]
         else:  # Use default leadin
             leadin = None
+        functions = [ (t.dictify() if isinstance(t, V1Function) else t) for t in functions ]
+        schema, tool_sysmsg = process_tool_sysmsg(functions, leadin=leadin)
         if req_data.stream:
-            responder = ToolCallStreamingResponder(model_name, model_type, functions, app.state.model, leadin)
+            responder = ToolCallStreamingResponder(model_name, model_type, functions, schema, tool_sysmsg)
         else:
-            responder = ToolCallResponder(model_name, model_type, functions, req_data.sysmsg_leadin)
+            responder = ToolCallResponder(model_name, model_type, schema, tool_sysmsg)
         if not (req_data.tool_options and req_data.tool_options.no_prompt_steering):
-            enrich_chat_for_tools(messages, responder.tool_prompt, app.state.model_flags)
+            enrich_chat_for_tools(messages, tool_sysmsg, app.state.model_flags)
             # import pprint; pprint.pprint(messages)
-        schema = responder.schema  # Assemble a JSON schema to steer the LLM output
     else:
         if req_data.stream:
             responder = ChatCompletionStreamingResponder(model_name, model_type)
@@ -211,7 +212,9 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
               help='Origin to be permitted for CORS https://fastapi.tiangolo.com/tutorial/cors/')
 def main(host, port, model, default_schema, default_schema_file, llmtemp, workers, cors_origin):
     app_params.update(model=model, default_schema=default_schema, default_schema_fpath=default_schema_file,
-                      llmtemp=llmtemp, cors_origins=list(cors_origin))
+                      llmtemp=llmtemp)
+    app.add_middleware(CORSMiddleware, allow_origins=list(cors_origin), allow_credentials=True,
+                       allow_methods=["*"], allow_headers=["*"])
     workers = workers or None
     # logger.info(f'Host has {NUM_CPUS} CPU cores')
     uvicorn.run('toolio.cli.server:app', host=host, port=port, reload=False, workers=workers)

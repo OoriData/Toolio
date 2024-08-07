@@ -5,7 +5,6 @@
 
 import sys
 import json
-from enum import Flag, auto
 import importlib
 import warnings
 
@@ -16,20 +15,14 @@ import warnings
 
 # from mlx_lm.models import olmo  # Will say:: To run olmo install ai2-olmo: pip install ai2-olmo
 
+from toolio import model_flag, DEFAULT_FLAGS
 from toolio.util import check_callable
 from toolio.schema_helper import Model
-from toolio.http_schematics import V1ChatMessage, V1Function
+from toolio.http_schematics import V1Function
+from toolio.prompt_helper import set_tool_response, process_tool_sysmsg
 from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
                               ChatCompletionResponder, ChatCompletionStreamingResponder)
 
-
-class model_flag(Flag):
-    NO_SYSTEM_ROLE = auto()  # e.g. Gemma blows up if you use a system message role
-    USER_ASSISTANT_ALT = auto()  # Model requires alternation of message roles user/assistant only
-    TOOL_RESPONSE = auto()  # Model expects responses from tools via OpenAI API style messages
-
-
-DEFAULT_FLAGS = model_flag(0)
 
 TOOL_CHOICE_AUTO = 'auto'
 TOOL_CHOICE_NONE = 'none'
@@ -281,12 +274,12 @@ class model_manager:
         return tool_responses
 
     async def _completion_trip(self, messages, stream, req_tool_spec, max_tokens=128, temperature=0.1):
-        schema = None
+        req_tool_spec = [ (t.dictify() if isinstance(t, V1Function) else t) for t in req_tool_spec ]
+        schema, tool_sysmsg = process_tool_sysmsg(req_tool_spec, leadin=self.sysmsg_leadin)
         if stream:
-            responder = ToolCallStreamingResponder(self.model, self.model_path, req_tool_spec, self.sysmsg_leadin)
+            responder = ToolCallStreamingResponder(self.model, self.model_path, req_tool_spec, schema, tool_sysmsg)
         else:
-            responder = ToolCallResponder(self.model_path, self.model_type, req_tool_spec, self.sysmsg_leadin)
-        schema = responder.schema
+            responder = ToolCallResponder(self.model_path, self.model_type, schema, tool_sysmsg)
         # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
         cache_prompt=False
         async for resp in self._do_completion(messages, schema, responder, cache_prompt=cache_prompt,
@@ -325,44 +318,3 @@ async def extract_content(resp_stream):
             content = chunk['choices'][0]['message'].get('content')
             if content is not None:
                 yield content
-
-
-def enrich_chat_for_tools(msgs, tool_prompt, model_flags):
-    '''
-    msgs - chat messages to augment
-    model_flags - flags indicating the expectations of the hosted LLM
-    '''
-    # Add prompting (system prompt, if permitted) instructing the LLM to use tools
-    if model_flag.NO_SYSTEM_ROLE in model_flags:  # LLM supports system messages
-        msgs.insert(0, V1ChatMessage(role='system', content=tool_prompt))
-    elif model_flag.USER_ASSISTANT_ALT in model_flags: # LLM insists that user and assistant messages must alternate
-        msgs[0].content = msgs[0].content=tool_prompt + '\n\n' + msgs[0].content
-    else:
-        msgs.insert(0, V1ChatMessage(role='user', content=tool_prompt))
-
-
-def set_tool_response(msgs, tool_call_id, tool_name, tool_result, model_flags=DEFAULT_FLAGS):
-    '''
-    msgs - chat messages to augment
-    tool_response - response generatded by selected tool
-    model_flags - flags indicating the expectations of the hosted LLM
-    '''
-    # XXX: model_flags = None ⇒ assistant-style tool response. Is this the default we want?
-    if model_flag.TOOL_RESPONSE in model_flags:
-        msgs.append({
-            'tool_call_id': tool_call_id,
-            'role': 'tool',
-            'name': tool_name,
-            'content': tool_result,
-        })
-    else:
-        # FIXME: Separate out natural language
-        tool_response_text = f'Result of the call to {tool_name}: {tool_result}'
-        if model_flag.USER_ASSISTANT_ALT in model_flags:
-            # If there is already an assistant msg from tool-calling, merge it
-            if msgs[-1]['role'] == 'assistant':
-                msgs[-1]['content'] += '\n\n' + tool_response_text
-            else:
-                msgs.append({'role': 'assistant', 'content': tool_response_text})
-        else:
-            msgs.append({'role': 'assistant', 'content': tool_response_text})
