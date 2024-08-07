@@ -7,6 +7,12 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
+## [Unreleased]
+
+### Added
+
+- First cut at docs
+
 ## [0.4.2] - 20240807
 
 ### Added
