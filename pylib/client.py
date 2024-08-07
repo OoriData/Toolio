@@ -92,13 +92,15 @@ class struct_mlx_chat_api(model_manager):
             else:
                 self.register_tool(toolspec)
 
-    async def __call__(self, messages, req='chat/completions', schema=None, toolset=None, tool_choice=TOOL_CHOICE_AUTO,
-                       apikey=None, max_trips=3, trip_timeout=90.0, **kwargs):
+    async def __call__(self, messages, req='chat/completions', schema=None, toolset=None, sysprompt=None,
+                       tool_choice=TOOL_CHOICE_AUTO, apikey=None, max_trips=3, trip_timeout=90.0, **kwargs):
         '''
         Invoke the LLM with a completion request
 
         Args:
-            messages (str) - Prompt in the form of list of messages to send ot the LLM for completion
+            messages (str) - Prompt in the form of list of messages to send ot the LLM for completion.
+                If you have a system prompt, and you are setting up to call tools, it will be updated with
+                the tool spec
 
             trip_timeout (float) - timeout (in seconds) per LLM API request trip; defaults to 90s
 
@@ -139,7 +141,7 @@ class struct_mlx_chat_api(model_manager):
         elif toolset or self._tool_schema_stanzs:
             req_data['tool_choice'] = tool_choice
             if req_tools and tool_choice == TOOL_CHOICE_NONE:
-                warnings.warn('Tools were provided, but tool_choise was set so they\'ll never be used')
+                warnings.warn('Tools were provided, but tool_choice was set to `none`, so they\'ll never be used')
             # if tool_options: req_data['tool_options'] = tool_options
             # for t in tools_list:
             #     self.register_tool(t['function']['name'], t['function'].get('pyfunc'))

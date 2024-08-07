@@ -389,6 +389,60 @@ async def query_sq_root(tmm):
 asyncio.run(query_sq_root(toolio_mm))
 ```
 
+# Tweaking prompts
+
+Part of the process of getting an LLM to stick to a schema, or to call tools is to give it a system prompt to that effect. Toolio has built in prompt language for this purpose. We believe strongly in the design principle of separating natural language (e.g. prompts) from code, so the latyter is packaged into the `resource/language.toml` file, using [Word Loom](https://github.com/OoriData/OgbujiPT/wiki/Word-Loom:-A-format-for-managing-language-for-AI-LLMs-(including-prompts)) conventions.
+
+You can of course override the built-in prompting.
+
+## Overriding the tool-calling system prompt from the command line
+
+```sh
+echo 'What is the square root of 256?' > /tmp/llmprompt.txt        
+echo '{"tools": [{"type": "function","function": {"name": "square_root","description": "Get the square root of the given number","parameters": {"type": "object", "properties": {"square": {"type": "number", "description": "Number from which to find the square root"}},"required": ["square"]},"pyfunc": "math|sqrt"}}], "tool_choice": "auto"}' > /tmp/toolspec.json
+toolio_request --apibase="http://localhost:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json --sysprompt="You are a helpful assistant with access to a tool that you may invoke if needed to answer the user's request. Please use the tool as applicable, even if you think you already know the answer. Give your final answer in Shakespearean English The tool is:
+Tool"
+```
+
+## Overriding the tool-calling system prompt from the Python API
+
+In order to override the system prompt from code, just se it in the initial chat message as the `system` role.
+
+```py
+import asyncio
+from math import sqrt
+from toolio.llm_helper import model_manager, extract_content
+
+SQUARE_ROOT_METADATA = {'name': 'square_root', 'description': 'Get the square root of the given number',
+                            'parameters': {'type': 'object', 'properties': {
+                                'square': {'type': 'number',
+                                'description': 'Number from which to find the square root'}},
+                            'required': ['square']}}
+toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
+                          tool_reg=[(sqrt, SQUARE_ROOT_METADATA)], trace=True)
+
+# System prompt will be used to direct the LLM's tool-calling
+SYSPROMPT = '''You are a tutor from Elizabethan England, with access a tool that you may invoke if needed to answer the user's request. Please use the tool as applicable, even if you think you already know the answer. Remember to give your final answer in Elizabethan English The tool is:
+Tool
+'''
+
+async def query_sq_root(tmm):
+    msgs = [
+      {'role': 'system', 'content': SYSPROMPT},
+      {'role': 'user', 'content': 'What is the square root of 256?'}
+      ]
+    async for chunk in extract_content(tmm.complete_with_tools(msgs)):
+        print(chunk, end='')
+
+asyncio.run(query_sq_root(toolio_mm))
+```
+
+In which case you can express a response such as:
+
+```
+Good sir or madam, the square root of 256 is indeed 16. Mayhap thou wouldst like to know more of this wondrous number? I am at thy service.
+```
+
 # More examples
 
 See the `demo` directory.
