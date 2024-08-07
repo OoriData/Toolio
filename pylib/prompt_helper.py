@@ -85,7 +85,7 @@ def select_tool_prompt(self, tools, tool_schemas, separator='\n', leadin=None):
 
 
 def process_tool_sysmsg(tools, leadin=None):
-    print(f'{tools=} | {leadin=}')
+    # print(f'{tools=} | {leadin=}')
     function_schemas = [
         {
             'type': 'object',
@@ -103,5 +103,5 @@ def process_tool_sysmsg(tools, leadin=None):
     else:
         schema = {'type': 'array', 'items': {'anyOf': function_schemas}}
         tool_sysmsg = multiple_tool_prompt(tools, function_schemas, leadin=leadin)
-    print(f'{tool_sysmsg=}')
+    # print(f'{tool_sysmsg=}')
     return schema, tool_sysmsg

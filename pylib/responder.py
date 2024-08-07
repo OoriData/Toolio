@@ -125,7 +125,7 @@ class ToolCallResponder(ChatCompletionResponder):
         self.schema = schema
         self.tool_sysmsg = sysmsg
         import sys
-        print(f'🧰 Tool {schema=}\n{sysmsg=}', file=sys.stderr)
+        # print(f'🧰 Tool {schema=}\n{sysmsg=}', file=sys.stderr)
 
     def translate_reason(self, reason):
         if reason == 'end':
