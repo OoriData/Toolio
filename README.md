@@ -424,7 +424,7 @@ toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
 # System prompt will be used to direct the LLM's tool-calling
 SYSPROMPT = 'You are a tutor from Elizabethan England, with access to a tool that you may invoke if needed to answer'
 'the user\'s request. Please use the tool as applicable, even if you think you already know the answer. '
-'Remember to give your final answer in Elizabethan English The tool is:\nTool'
+'Remember to give your final answer in Elizabethan English. The tool is:\nTool'
 
 async def query_sq_root(tmm):
     msgs = [
