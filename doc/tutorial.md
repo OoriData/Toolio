@@ -1,43 +1,24 @@
-![toolio_github_header](https://github.com/OoriData/Toolio/assets/12983495/e6b35d7f-4b37-4f77-8dc5-1bafc8befb86)
-♪ Come along and ride on a fantastic voyage 🎵, with AI riding shotgun seat and a flatbed full of tools.
-
-Toolio is an OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It's also really useful for more reliable tool calling. Toolio is based on the MLX framework for Apple Silicon (e.g. M1/M2/M3/M4 Macs), so that's the only supported platform at present.
-
-Call it tool-calling or function-calling, or agentic workflows based on schema-driven output, or guided generation, or steered response.
-
-Builds on: https://github.com/otriscon/llm-structured-output/
-
-<table><tr>
-  <td><a href="https://oori.dev/"><img src="https://www.oori.dev/assets/branding/oori_Logo_FullColor.png" width="64" /></a></td>
-  <td>Toolio is primarily developed by the crew at <a href="https://oori.dev/">Oori Data</a>. We offer data pipelines and software engineering services around AI/LLM applications.</td>
-</tr></table>
-
-The following video, "Toolio in 10 minutes", is an easy way to learn about the project.
-
-[![Toolio in 10 minutes](https://github.com/user-attachments/assets/fc8dda94-326d-426e-a566-ac8ec60be31f)](https://youtu.be/9DpQYbteakc)
-
-<!--
-<iframe width="560" height="315" src="https://www.youtube.com/embed/9DpQYbteakc?si=Zy4Cj1v1q9ID07eg" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-
-<img width="1268" alt="Toolio in 10 minutes still" src="https://github.com/user-attachments/assets/fc8dda94-326d-426e-a566-ac8ec60be31f">
--->
-
-`toolio_server` is a FastAPI program that you can use to host MLX-format LLMs for structured output query or function-calling. For example to host the MLX format LLM model `mlx-community/Hermes-2-Theta-Llama-3-8B-4bit` as follows (from the cloned directory of this repository):
-
-# Installation and Setup
+# Installation
 
 ```sh
 pip install toolio
+```
+
+# HTTP client/server usage
+
+## Launch a server
+
+```sh
 toolio_server --model=mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
 ```
 
-This will download the model (a little over 4GB) to your local HuggingFace disk cache, and running it will take up about that much of your unified RAM.
+I just picked my own favorite general-purpose LLM, Hermes-2-Theta/Llama-3 (8B parameters) but feel free to choose any other. Another good one is Mistral Nemo (12B).
 
-For more on the MLX framework for ML workloads (including LLMs) on Apple Silicon, see the [MLX Notes](https://github.com/uogbuji/mlx-notes) article series. The "Day One" article provides all the context you need for using local LLMs with Toolio.
+In the case of Hermes-2-Theta, it will download the model (a little over 4GB) to your local HuggingFace disk cache, and running it will take up about that much of your unified RAM.
 
-# cURLing the Toolio server
+## cURLing the Toolio server
 
-Try out a basic request:
+Try out a basic request using the classic [cURL](https://curl.se/) command, not using any output structure constraint, and just taking the LLM response as is:
 
 ```sh
 curl -X POST "http://localhost:8000/v1/chat/completions" \
@@ -48,7 +29,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
    }'
 ```
 
-This is actually not constraining to any output structure, and is just using the LLM as is. Here is a request that does constrain return structure:
+Here is a request that does constrain return structure:
 
 ```sh
 curl -X POST "http://localhost:8000/v1/chat/completions" \
@@ -443,30 +424,3 @@ In which case you can express a response such as:
 Good sir or madam, the square root of 256 is indeed 16. Mayhap thou wouldst like to know more of this wondrous number? I am at thy service.
 ```
 
-# More examples
-
-See the `demo` directory.
-
-# Credits
-
-* otriscon's [llm-structured-output](https://github.com/otriscon/llm-structured-output/) is the foundation of this package
-* [OgbujiPT](https://github.com/OoriData/OgbujiPT) provides the client-side Open-AI-style LLM framework, and also the [Word Loom](https://github.com/OoriData/OgbujiPT/wiki/Word-Loom:-A-format-for-managing-language-for-AI-LLMs-(including-prompts)) convention for separating prompt text from code.
-
-# License
-
-Apache 2
-
-# Nearby projects
-
-* [Instructor](https://github.com/jxnl/instructor) - LLM structured output via prompt engineering rather than steered sampling.
-* [Outlines](https://github.com/outlines-dev/outlines) - Structured Text Generation vis Pydantic, JSON schema or EBNF. Seems to be sampling control.
-
-# Why this, anyway?
-
-In our thinking, and that of many others working in the space for a while, agent/tool systems are where GenAI are most likely to deliver practical value. Watch out, though, because McKinsey has seen fit to apply their $1,000/hr opinions along the same lines. ["Why agents are the next frontier of generative AI"](https://www.mckinsey.com/capabilities/mckinsey-digital/our-insights/why-agents-are-the-next-frontier-of-generative-ai?cid=soc-web) (July 2024)
-
-[Parrot/Gorilla cartoon here]
-
-# Project name
-
-Named after the legend himself. Best don't pretend you don't know Coolio, fool! Popular rapper (R.I.P.) from LA. You watched *Cookin' with Coolio*, now it's time to Tool up with Toolio! ♪*Slide slide, but that's the past; I got something brand new for that aß.*🎼

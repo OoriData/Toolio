@@ -39,3 +39,7 @@ _ = "Function"
 
 [select_tool_prompt_schemalabel]
 _ = "Tool schema"
+
+[openai_gpt_4o_20240806_toolcall_system]
+_ = "You are a helpful assistant. The current date is {today}. You help users query for the data they are looking for by calling the query function."
+_m = ["today"]
