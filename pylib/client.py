@@ -8,7 +8,7 @@ Encapsulate HTTP query of LLMs for structured response, as hosted by MLXStructur
 Modeled on ogbujipt.llm_wrapper.openai_api & ogbujipt.llm_wrapper.openai_chat_api
 
 '''
-import logging
+# import logging
 import json
 import warnings
 from enum import Flag, auto
@@ -21,9 +21,10 @@ from amara3 import iri
 from ogbujipt import config
 from ogbujipt.llm_wrapper import llm_response, response_type
 
-from toolio import TOOLIO_MODEL_TYPE_FIELD
-from toolio.llm_helper import model_manager, set_tool_response, TOOL_CHOICE_AUTO, TOOL_CHOICE_NONE, FLAGS_LOOKUP
-from toolio.llm_helper import DEFAULT_FLAGS as DEFAULT_MODEL_FLAGS
+from toolio.common import TOOLIO_MODEL_TYPE_FIELD, TOOL_CHOICE_AUTO, TOOL_CHOICE_NONE, FLAGS_LOOKUP
+from toolio.common import DEFAULT_FLAGS as DEFAULT_MODEL_FLAGS
+from toolio.common import model_client_mixin
+from toolio.prompt_helper import set_tool_response
 
 
 class tool_flag(Flag):
@@ -36,7 +37,7 @@ DEFAULT_FLAGS = tool_flag.REMOVE_USED_TOOLS
 HTTP_SUCCESS = 200
 
 
-class struct_mlx_chat_api(model_manager):
+class struct_mlx_chat_api(model_client_mixin):
     '''
     Wrapper for OpenAI chat-style LLM API endpoint, with support for structured responses
     via schema specifiation in query
@@ -80,17 +81,8 @@ class struct_mlx_chat_api(model_manager):
         # OpenAI-style tool-calling LLMs give IDs to tool requests by the LLM
         # Internal structure to manage these. Key is tool_call_id; value is tuple of callable, kwargs
         # self._pending_tool_calls = {}
-        self._tool_registry = {}  # tool_name: tool_obj
-        self._tool_schema_stanzs = []
         self._flags = flags
-        self._trace = trace
-        # Prepare library of tools
-        for toolspec in (tool_reg or []):
-            if isinstance(toolspec, tuple):
-                funcpath_or_obj, schema = toolspec
-                self.register_tool(funcpath_or_obj, schema)
-            else:
-                self.register_tool(toolspec)
+        super().__init__(tool_reg=tool_reg, trace=trace)
 
     async def __call__(self, messages, req='chat/completions', schema=None, toolset=None, sysprompt=None,
                        tool_choice=TOOL_CHOICE_AUTO, apikey=None, max_trips=3, trip_timeout=90.0, **kwargs):
@@ -138,7 +130,7 @@ class struct_mlx_chat_api(model_manager):
             req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
             resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
 
-        elif toolset or self._tool_schema_stanzs:
+        elif toolset:
             req_data['tool_choice'] = tool_choice
             if req_tools and tool_choice == TOOL_CHOICE_NONE:
                 warnings.warn('Tools were provided, but tool_choice was set to `none`, so they\'ll never be used')

@@ -5,7 +5,7 @@
 
 import json
 
-from toolio import LANG, model_flag, DEFAULT_FLAGS
+from toolio.common import LANG, model_flag, DEFAULT_FLAGS
 from toolio.http_schematics import V1ChatMessage
 
 

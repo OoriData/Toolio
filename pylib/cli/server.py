@@ -29,10 +29,10 @@ import uvicorn
 
 from llm_structured_output.util.output import info, warning, debug
 
+from toolio.common import DEFAULT_FLAGS, FLAGS_LOOKUP
 from toolio.schema_helper import Model
 from toolio.http_schematics import V1Function
 from toolio.prompt_helper import enrich_chat_for_tools, process_tool_sysmsg
-from toolio.llm_helper import DEFAULT_FLAGS, FLAGS_LOOKUP
 from toolio.http_schematics import V1ChatCompletionsRequest, V1ResponseFormatType
 from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
                               ChatCompletionResponder, ChatCompletionStreamingResponder)

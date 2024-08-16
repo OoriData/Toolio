@@ -7,7 +7,7 @@ import asyncio
 
 import click
 
-from toolio.http_schematics import V1Function
+# from toolio.http_schematics import V1Function
 from toolio.llm_helper import model_manager, extract_content
 
 async def amain(mm):

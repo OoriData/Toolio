@@ -9,9 +9,8 @@ Marshalling sreaming & non-streaming responses from LLMs
 import json
 import time
 
-from toolio import TOOLIO_MODEL_TYPE_FIELD
+from toolio.common import TOOLIO_MODEL_TYPE_FIELD
 from toolio.http_schematics import V1Function
-from toolio.prompt_helper import process_tool_sysmsg
 
 
 class ChatCompletionResponder:
