@@ -3,7 +3,7 @@
 
 Toolio is an OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It's also really useful for more reliable tool calling. Toolio is based on the MLX framework for Apple Silicon (e.g. M1/M2/M3/M4 Macs), so that's the only supported platform at present.
 
-Call it tool-calling or function-calling, or agentic workflows based on schema-driven output, or guided generation, or steered response.
+Call it tool-calling or function-calling, or agentic workflows based on schema-driven output, or guided generation, or steered response. If you're non-technical, you can think of it as your "GPT Private Agent". It can handle tasks for you, without spilling your secrets.
 
 Builds on: https://github.com/otriscon/llm-structured-output/
 

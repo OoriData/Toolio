@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Oori Data <info@oori.dev>
 #
 # SPDX-License-Identifier: Apache-2.0
-# # toolio
+# toolio
 
 from pathlib import Path  # noqa: E402
 from enum import Flag, auto
@@ -37,3 +37,9 @@ class model_flag(Flag):
 
 
 DEFAULT_FLAGS = model_flag(0)
+
+try:
+    import mlx  # noqa: F401
+except ImportError:
+    import warnings
+    warnings.warn('Unable to import MLX. You will only be able to run pure HTTP client components.')

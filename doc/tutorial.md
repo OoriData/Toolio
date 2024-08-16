@@ -424,3 +424,6 @@ In which case you can express a response such as:
 Good sir or madam, the square root of 256 is indeed 16. Mayhap thou wouldst like to know more of this wondrous number? I am at thy service.
 ```
 
+# Other resources & examples
+
+* [Video based on the algebra_tutor.py demo](https://youtu.be/q5Eswkca8MI)

@@ -43,7 +43,7 @@ toolio_mm = model_manager('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
 async def say_hello(tmm):
     prompt = ('solve 8x + 31 = 2. Your answer should be only JSON, according to this schema: {json_schema}')
     msgs = [{'role': 'user', 'content': prompt.format(json_schema=SCHEMA)}]
-    async for chunk in extract_content(tmm.complete(msgs, json_schema=SCHEMA)):
+    async for chunk in extract_content(tmm.complete(msgs, json_schema=SCHEMA, max_tokens=512)):
         print(chunk, end='')
 
 asyncio.run(say_hello(toolio_mm))
