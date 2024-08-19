@@ -84,7 +84,7 @@ class struct_mlx_chat_api(model_client_mixin):
         self._flags = flags
         super().__init__(tool_reg=tool_reg, trace=trace)
 
-    async def __call__(self, messages, req='chat/completions', schema=None, toolset=None, sysprompt=None,
+    async def __call__(self, messages, req='chat/completions', json_schema=None, toolset=None, sysprompt=None,
                        tool_choice=TOOL_CHOICE_AUTO, apikey=None, max_trips=3, trip_timeout=90.0, **kwargs):
         '''
         Invoke the LLM with a completion request
@@ -94,12 +94,18 @@ class struct_mlx_chat_api(model_client_mixin):
                 If you have a system prompt, and you are setting up to call tools, it will be updated with
                 the tool spec
 
-            trip_timeout (float) - timeout (in seconds) per LLM API request trip; defaults to 90s
+            req (str) - API endpoint to invoke
+
+            json_schema - JSON schema to be used to guide the final generation step (after all tool-calling, if any)
+
+            sysprompt (str) - System prompt to use in the chat messages
 
             toolset (list) - tools specified for this request, presumably a subset of overall tool registry.
                 Each entry is either a tool name, in which the invocation schema is as registered, or a full
                 tool-calling format stanza, in which case, for this request, only the implementaton is used
                 from the initial registry
+
+            trip_timeout (float) - timeout (in seconds) per LLM API request trip; defaults to 90s
 
             kwargs (dict, optional): Extra parameters to pass to the model via API.
                 See Completions.create in OpenAI API, but in short, these:
@@ -109,14 +115,15 @@ class struct_mlx_chat_api(model_client_mixin):
             dict: JSON response from the LLM
         '''
         # Uncomment for test case construction
-        # print('MESSAGES', messages, '\n', 'SCHEMA', schema, '\n', 'TOOLS', toolset)
+        # print('MESSAGES', messages, '\n', 'json_schema', json_schema, '\n', 'TOOLS', toolset)
         toolset = toolset or self.toolset
         req_tools = self._resolve_tools(toolset)
         req_tool_spec = [ s for f, s in req_tools.values() ]
 
         if max_trips < 1:
             raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
-        schema = schema or self.default_schema
+        # XXX: Should we offer a way to override the default to not use a schema?
+        schema = json_schema or self.default_schema
         schema_str = json.dumps(schema)
 
         # Replace {json_schema} references with the schema
@@ -126,11 +133,7 @@ class struct_mlx_chat_api(model_client_mixin):
             # Perhaps make the replacement string configurable
             m['content'] = m['content'].replace('{json_schema}', schema_str)
         req_data = {'messages': messages, **kwargs}
-        if schema:
-            req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
-            resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
-
-        elif toolset:
+        if toolset:
             req_data['tool_choice'] = tool_choice
             if req_tools and tool_choice == TOOL_CHOICE_NONE:
                 warnings.warn('Tools were provided, but tool_choice was set to `none`, so they\'ll never be used')
@@ -145,6 +148,9 @@ class struct_mlx_chat_api(model_client_mixin):
                 # If the tools list is empty (perhaps we removed the last one in a prev loop), omit it entirely
                 if 'tools' in req_data and not req_data['tools']:
                     del req_data['tools']
+                    # XXX: Interplay between tool use & schema is actually much trickier than it seems, at first
+                    if schema:
+                        req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
                 resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
                 max_trips -= 1
                 # If LLM has asked for tool calls, prepare to loop back
@@ -179,6 +185,10 @@ class struct_mlx_chat_api(model_client_mixin):
             if max_trips <= 0:
                 # FIXME: i18n
                 warnings.warn('Maximum LLM trips exhausted without a final answer')
+
+        elif schema:
+            req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
+            resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
 
         else:
             resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)

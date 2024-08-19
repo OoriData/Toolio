@@ -61,18 +61,26 @@ class model_manager(model_client_mixin):
     # Seems streaming is not quite yet working
     # async def complete_with_tools(self, messages, toolset, stream=True, max_trips=3, tool_choice=None,
     #                               max_tokens=128, temperature=0.1):
-    async def complete_with_tools(self, messages, toolset=None, stream=False, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
-                                  max_tokens=128, temperature=0.1):
+    async def complete_with_tools(self, messages, toolset=None, stream=False, json_schema=None, max_trips=3,
+                                  tool_choice=TOOL_CHOICE_AUTO, max_tokens=128, temperature=0.1):
         '''
         Make a chat completion with tools, then continue to iterate completions as long as the LLM
         is using at least one tool, or until max_trips are exhausted
+
+        messages (str) - Prompt in the form of list of messages to send ot the LLM for completion.
+            If you have a system prompt, and you are setting up to call tools, it will be updated with
+            the tool spec
 
         toolset (list) - tools specified for this request, presumably a subset of overall tool registry.
             Each entry is either a tool name, in which the invocation schema is as registered, or a full
             tool-calling format stanza, in which case, for this request, only the implementaton is used
             from the initial registry
+
+        json_schema - JSON schema to be used to guide the final generation step (after all tool-calling, if any)
+
         '''
         toolset = toolset or self.toolset
+        schema_str = json.dumps(json_schema)
         req_tools = self._resolve_tools(toolset)
         req_tool_spec = [ s for f, s in req_tools.values() ]
 
@@ -115,8 +123,9 @@ class model_manager(model_client_mixin):
                 break
             if not req_tool_spec:
                 # This is the final call, with all tools removed, so just do a regular completion
-                # XXX: SHould we allow a JSON schema or other control for the final response?
-                async for resp in self.complete(messages, stream=stream, max_tokens=max_tokens, temperature=temperature):
+                # XXX: Interplay between tool use & schema is actually much trickier than it seems, at first
+                async for resp in self.complete(messages, json_schema=json_schema, stream=stream, max_tokens=max_tokens,
+                                                temperature=temperature):
                     yield resp
                 break
 

@@ -172,7 +172,7 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
 
     for result in app.state.model.completion(
         messages,
-        schema=schema,
+        json_schema=schema,
         max_tokens=req_data.max_tokens,
         temp=req_data.temperature,
         # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12

@@ -48,6 +48,14 @@ async def amain(mm):
     async for chunk in extract_content(mm.complete_with_tools(msgs, toolset=['square_root'], tool_choice='auto')):
         print(chunk, end='')
 
+    print('\n', '='*40, 'Square root of 256, pt 3')
+
+    schema = ('{"type": "object", "properties": {"result": {"type": "number"}}}')
+    prompt = 'What is the square root of 256?'
+    msgs = [ {'role': 'user', 'content': prompt} ]
+    async for chunk in extract_content(mm.complete_with_tools(msgs, toolset=['square_root'], json_schema=schema)):
+        print(chunk, end='')
+
     print('\n', '='*40, 'Usain bolt')
 
     from toolio.tool.math import calculator
