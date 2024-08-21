@@ -5,6 +5,9 @@
 
 from toolio import __about__
 from toolio.common import LANG
+from toolio.llm_helper import model_manager
+
+__all__ = ['LANG', 'model_manager', 'VERSION']
 
 VERSION = __about__.__version__
 

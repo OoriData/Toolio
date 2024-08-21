@@ -5,7 +5,7 @@
 
 import json
 
-from toolio.common import model_flag, DEFAULT_FLAGS, TOOL_CHOICE_AUTO, model_client_mixin
+from toolio.common import TOOL_CHOICE_AUTO, model_client_mixin
 from toolio.common import extract_content  # Just really for legacy import patterns # noqa: F401
 from toolio.schema_helper import Model
 from toolio.http_schematics import V1Function

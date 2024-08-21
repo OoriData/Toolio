@@ -42,14 +42,13 @@ from toolio.client import struct_mlx_chat_api, response_type, cmdline_tools_stru
 
 @click.option('--tool', '-t', multiple=True, help='Full Python attribute path to a Toolio-specific callable to be made available to the LLM')
 
-@click.option('--model', type=str, help='Path to locally-hosted MLX format model')
 @click.option('--temp', default=0.1, type=float, help='LLM sampling temperature')
 
 @click.option('--trip-timeout', default=90.0, type=float, help='Timeout for each LLM API trip, in seconds')
 @click.option('--trace', is_flag=True, default=False,
               help='Print information (to STDERR) about tool call requests & results. Useful for debugging')
 def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, tool, sysprompt, max_trips, max_tokens,
-         model, temp, trip_timeout, trace):
+         temp, trip_timeout, trace):
     if prompt_file:
         prompt = prompt_file.read()
     if not prompt:
@@ -74,8 +73,9 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
     tool_choice = tools_obj.get('tool_choice', 'auto') if isinstance(tools_obj, dict) else 'auto'
 
     llm = struct_mlx_chat_api(base_url=apibase, tool_reg=tools_list, trace=trace)
-    resp = asyncio.run(llm(prompt_to_chat(prompt, system=sysprompt), json_schema=schema_obj, toolset=llm.toolset,
-                           tool_choice=tool_choice, max_trips=max_trips, trip_timeout=trip_timeout))
+    resp = asyncio.run(llm(prompt_to_chat(prompt, system=sysprompt), max_tokens=max_tokens, temperature=temp,
+                           json_schema=schema_obj, toolset=llm.toolset, tool_choice=tool_choice, max_trips=max_trips,
+                           trip_timeout=trip_timeout))
     if resp['response_type'] == response_type.TOOL_CALL:
         print('The model invoked the following tool calls to complete the response, but there are no permitted trips remaining.')
         tcs = resp['choices'][0]['message']['tool_calls']

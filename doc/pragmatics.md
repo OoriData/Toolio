@@ -8,6 +8,10 @@ Many users of Toolio will be referencing HuggingFace paths to models, especially
 
 This also means you should be able to use Toolio with already downloaded models when you are not connected to the Internet, but some details about how models are loaded add a wrinkle to matters. If you reference any model by its HF path, even if it has already been cached, there will be internet access, and things will hang or fail if you are offline.
 
+## Environment variables
+
+Try the environment variable `HF_DATASETS_OFFLINE="1"`. Also try setting `HF_HOME` to a cache folder with predownloaded the necessary models & datasets.
+
 ## Specifying the cache local directory
 
 One solution ot this is to explicitly load the local cache directory rather than the HF path. An easy first step is to scan the cache to see what's there:
@@ -33,4 +37,8 @@ Loading in this way will avoid any attempts to connect to the internet.
 ## Saving a pretrained model
 
 If you'd ratehr have a location of your choice, avoid the hash-based names, etc., you can use…
+
+## Further exploration
+
+`local_files_only` argument to `snapshot_download` (used by mlx_lm under the hood)—_(bool, optional, defaults to False) — If True, avoid downloading the file and return the path to the local cached file if it exists._
 

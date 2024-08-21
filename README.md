@@ -1,11 +1,18 @@
 ![toolio_github_header](https://github.com/OoriData/Toolio/assets/12983495/e6b35d7f-4b37-4f77-8dc5-1bafc8befb86)
 ♪ Come along and ride on a fantastic voyage 🎵, with AI riding shotgun seat and a flatbed full of tools.
 
-Toolio is an OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It's also really useful for more reliable tool calling. Toolio is based on the MLX framework for Apple Silicon (e.g. M1/M2/M3/M4 Macs), so that's the only supported platform at present.
+Toolio is an OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It's also really useful for more reliable tool calling. Toolio is based on the MLX framework for Apple Silicon (e.g. M1/M2/M3/M4 Macs), so **that's the only supported platform at present**.
 
 Call it tool-calling or function-calling, or agentic workflows based on schema-driven output, or guided generation, or steered response. If you're non-technical, you can think of it as your "GPT Private Agent". It can handle tasks for you, without spilling your secrets.
 
 Builds on: https://github.com/otriscon/llm-structured-output/
+
+## Specific components and usage modes
+
+* `toolio_server` (command line)—Host MLX-format LLMs for structured output query or function calling via HTTP requests
+* `toolio_request` (command line)—Execute HTTP client requests against a server
+* `toolio.model_manager` (Python API)—Encapsulate an MLX-format LLM for convenient, in-resident query with structured output or function calling
+* `toolio.client.struct_mlx_chat_api` (Python API)—Make a toolio server request from code
 
 <table><tr>
   <td><a href="https://oori.dev/"><img src="https://www.oori.dev/assets/branding/oori_Logo_FullColor.png" width="64" /></a></td>
@@ -22,22 +29,31 @@ The following video, "Toolio in 10 minutes", is an easy way to learn about the p
 <img width="1268" alt="Toolio in 10 minutes still" src="https://github.com/user-attachments/assets/fc8dda94-326d-426e-a566-ac8ec60be31f">
 -->
 
-`toolio_server` is a FastAPI program that you can use to host MLX-format LLMs for structured output query or function-calling. For example to host the MLX format LLM model `mlx-community/Hermes-2-Theta-Llama-3-8B-4bit` as follows (from the cloned directory of this repository):
+# Installation
 
-# Installation and Setup
+As simple as:
 
 ```sh
 pip install toolio
+```
+
+# Host a server
+
+Use `toolio_server` to host MLX-format LLMs for structured output query or function-calling. For example you can host the MLX version of Nous Research's Hermes-2 Θ (Theta).
+
+```sh
 toolio_server --model=mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
 ```
 
-This will download the model (a little over 4GB) to your local HuggingFace disk cache, and running it will take up about that much of your unified RAM.
+This will download the model from the HuggingFace path `mlx-community/Hermes-2-Theta-Llama-3-8B-4bit` to your local disk cache. The `4bit` at the end means you are downloading a version quantized to 4 bits, so that each parameter in the neural network, which would normally take up 16 bits, only takes up 4, in order to save memory and boost speed. There are 8 billion parameters, so this version will take up a little over 4GB on your disk, and running it will take up about the sama amount of your unified RAM.
 
-For more on the MLX framework for ML workloads (including LLMs) on Apple Silicon, see the [MLX Notes](https://github.com/uogbuji/mlx-notes) article series. The "Day One" article provides all the context you need for using local LLMs with Toolio.
+To learn more about the MLX framework for ML workloads (including LLMs) on Apple Silicon, see the [MLX Notes](https://github.com/uogbuji/mlx-notes) article series. The "Day One" article provides all the context you need for using local LLMs with Toolio.
 
-# cURLing the Toolio server
+There are many hundreds of models you can select. One bit of advice is that Toolio, for now, tends to work better with base or base/chat models, rather than instruct-tuned models.
 
-Try out a basic request:
+## cURLing the Toolio server
+
+Try out a basic request, not using any of Toolio's special features, but rather using the LLM as is:
 
 ```sh
 curl -X POST "http://localhost:8000/v1/chat/completions" \
@@ -48,7 +64,11 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
    }'
 ```
 
-This is actually not constraining to any output structure, and is just using the LLM as is. Here is a request that does constrain return structure:
+This is actually not constraining to any output structure, and is just . 
+
+## Specifying an output JSON schema
+
+Here is a request that does constrain return structure:
 
 ```sh
 curl -X POST "http://localhost:8000/v1/chat/completions" \
@@ -63,7 +83,15 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
    }'
 ```
 
-# Using the command line client instead
+The key here is specification of a JSON schema. It's escaped for the command line shell above, so here it is in its regular form:
+
+```json
+{"type": "object", "properties": {"number": {"type": "number"}}}
+```
+
+It looks a bit intimidating, at first, if you're not familiar with [JSON schema](https://json-schema.org/), but they're reasonably easy to learn. [You can follow the primer](https://json-schema.org/learn/getting-started-step-by-step).
+
+## Using the command line client instead
 
 cURL is a pretty raw interface for this, though. For example, you have to parse the resulting response JSON. It's a lot easier to use the more specialized command line client tool `toolio_request`. An example of a very simple data extraction use-case:
 
@@ -143,7 +171,7 @@ The square root of 256 is 16.
 
 `math.sqrt` is a convenient, simple example. You can specify any function which can already be imported (Toolio won't install any libraries at run time), and you can use imports and attribute lookups with multiple levels, e.g. `path.to.module_to_import|path.to.function`.
 
-## Libraries of tools (or toolboxes, if you prefer)
+## Libraries of tools (toolboxes, if you like)
 
 The examples above might feel like a bit too much work to use a tool; in particular putting together and sending along the tool-calling spec. In most cases you'll either be reusing tools developed by someone else, or your own special ones. In either case the tool-calling spec for each tool can be bundled for easier use. Toolio comes with a few tools you can use right away, for example. `toolio.tool.math.calculator` is a really simple calculator tool the LLM can use because once again LLMs are really bad at maths. But there's one step required first. Some of the built-in tools use third-party libraries which aren't baseline requirements of Toolio. Install them as follows:
 
@@ -210,7 +238,7 @@ It's a good example of how tool-calling can pretty easily go wrong. As LLMs get 
 
 # Write your own tools
 
-Study the examples in the `pylib/tools` directory to see how easy it is.
+Study the examples in the `pylib/tools` and in the `demo` directories to see how easy it is.
 
 # LLM-specific flows
 
@@ -458,8 +486,9 @@ Apache 2
 
 # Nearby projects
 
-* [Instructor](https://github.com/jxnl/instructor) - LLM structured output via prompt engineering rather than steered sampling.
-* [Outlines](https://github.com/outlines-dev/outlines) - Structured Text Generation vis Pydantic, JSON schema or EBNF. Seems to be sampling control.
+* [Outlines](https://github.com/outlines-dev/outlines) - Structured Text Generation vis Pydantic, JSON schema or EBNF. Similarly to Toolio, it does steered sampling, i.e. builds a finite-state machine to guide sampling based on schema
+* [Instructor](https://github.com/jxnl/instructor) - LLM structured output via prompt engineering, validation & retries rather than steered sampling.
+
 
 # Why this, anyway?
 
