@@ -102,7 +102,7 @@ class Model:
         top_tokens = [
             (self._decode([t]), p) for t, p in token_logits[:count] if p != -inf
         ]
-        debug("TOP TOKENS:", top_tokens)
+        debug('TOP TOKENS:', top_tokens)
 
     def _sample(self, logits, temp: float = 0):
         if temp == 0:
@@ -259,18 +259,18 @@ class Model:
             if tokens:
                 text = self._decode(tokens)
                 yield {
-                    "op": "generatedTokens",
-                    "text": text,
-                    "token_count": len(tokens),
-                    "time_ms": (time.time_ns() - start_time) / 1e6,
+                    'op': 'generatedTokens',
+                    'text': text,
+                    'token_count': len(tokens),
+                    'time_ms': (time.time_ns() - start_time) / 1e6,
                 }
 
             if eos_index >= 0:
-                yield {"op": "stop", "reason": "end"}
+                yield {'op': 'stop', 'reason': 'end'}
                 return
 
             if token_count >= max_tokens:
-                yield {"op": "stop", "reason": "max_tokens"}
+                yield {'op': 'stop', 'reason': 'max_tokens'}
                 return
 
             start_time = time.time_ns()
@@ -303,11 +303,11 @@ class Model:
         mx.eval(logits)
         prompt_time = time.time_ns() - start_time
         yield {
-            "op": "evaluatedPrompt",
-            "prompt": prompt,
-            "token_count": len(prompt_tokens),
-            "time_ms": prompt_time / 1e6,
-            "prompt_tps": len(prompt_tokens) / (prompt_time / 1e9),
+            'op': 'evaluatedPrompt',
+            'prompt': prompt,
+            'token_count': len(prompt_tokens),
+            'time_ms': prompt_time / 1e6,
+            'prompt_tps': len(prompt_tokens) / (prompt_time / 1e9),
         }
 
         if schema:
@@ -330,10 +330,10 @@ class Model:
         token_count = 0
         generation_time = 0
         for generation_result in self._generate_tokens(generator, max_tokens):
-            if generation_result['op'] == "generatedTokens":
+            if generation_result['op'] == 'generatedTokens':
                 token_count += generation_result['token_count']
                 generation_time += generation_result['time_ms']
-            elif generation_result['op'] == "stop":
+            elif generation_result['op'] == 'stop':
                 generation_result['token_count'] = token_count
                 generation_result['time_ms'] = generation_time
                 if generation_time == 0.0:
@@ -345,8 +345,6 @@ class Model:
                         generation_time / 1e3
                     )
             yield generation_result
-
-# Removed command line from https://github.com/otriscon/llm-structured-output/blob/main/src/examples/server.py
 
 
 class ReusableKVCache(KVCache):
@@ -370,9 +368,8 @@ class ReusableKVCache(KVCache):
             return
         # Clip the cache to the common length.
         self.offset = common_prefix_length
-        # Make sure the cache can fit the whole prompt. Because the offset is
-        # (very likely) not a multiple of the step size, update_and_fetch()
-        # won't resize the cache when evaluating the rest of the prompt as it
+        # Ensure cache can fit the whole prompt. Because the offset is (very likely) not a multiple of the step size,
+        # update_and_fetch() won't resize the cache when evaluating the rest of the prompt as it
         # would if it were an empty cache.
         current_size = self.keys.shape[2]
         if current_size < new_prompt_length:

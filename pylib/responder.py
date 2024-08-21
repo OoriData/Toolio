@@ -3,14 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # toolio.responder
 '''
-Marshalling sreaming & non-streaming responses from LLMs
+Marshalling streaming & non-streaming responses from LLMs
 '''
 
 import json
 import time
 
 from toolio.common import TOOLIO_MODEL_TYPE_FIELD
-from toolio.http_schematics import V1Function
 
 
 class ChatCompletionResponder:
@@ -214,7 +213,7 @@ class ToolCallStreamingResponder(ToolCallResponder):
                         },
                     },
                     'arguments': {
-                        **fn["parameters"],
+                        **fn['parameters'],
                         '__hooks': {
                             'value_start': start_function_arguments,
                             'value_end': end_function_arguments,
@@ -269,14 +268,8 @@ class ToolCallStreamingResponder(ToolCallResponder):
             **self.message_properties(),
         }
         return message
-        # return f'data: {json.dumps(message)}\n'
 
-    def generation_stopped(
-        self,
-        stop_reason: str,
-        prompt_tokens: int,
-        completion_tokens: int,
-    ):
+    def generation_stopped(self, stop_reason: str, prompt_tokens: int, completion_tokens: int):
         finish_reason = self.translate_reason(stop_reason)
         message = {
             'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}],
@@ -289,4 +282,3 @@ class ToolCallStreamingResponder(ToolCallResponder):
             **self.message_properties(),
         }
         return message
-        # return f'data: {json.dumps(message)}\ndata: [DONE]\n'
