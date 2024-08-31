@@ -4,18 +4,18 @@
 # toolio.llm_helper
 
 import json
+import logging
 
 from toolio.common import TOOL_CHOICE_AUTO, model_client_mixin
 from toolio.common import extract_content  # Just really for legacy import patterns # noqa: F401
 from toolio.schema_helper import Model
-from toolio.http_schematics import V1Function
-from toolio.prompt_helper import set_tool_response, process_tool_sysmsg
+from toolio.prompt_helper import set_tool_response, process_tools_for_sysmsg
 from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
                               ChatCompletionResponder, ChatCompletionStreamingResponder)
 
 
 class model_manager(model_client_mixin):
-    def __init__(self, model_path, tool_reg=None, trace=False, sysmsg_leadin=None, remove_used_tools=True):
+    def __init__(self, model_path, tool_reg=None, logger=logging, sysmsg_leadin=None, remove_used_tools=True):
         '''
         For client-side loading of MLX LLM models in Toolio
 
@@ -27,7 +27,7 @@ class model_manager(model_client_mixin):
             * tuple of (callable, schema), with separately specified schema
             * tuple of (None, schema), in which case a tool is declared (with schema) but with no implementation
 
-        trace - send annotations to STDERR to trace the tool-calling process
+        logger - logger object, handy for tracing operations
 
         sysmsg_leadin - Override the system message used to prime the model for tool-calling
         '''
@@ -35,7 +35,7 @@ class model_manager(model_client_mixin):
         self.model = Model()
         self.model.load(model_path)
         self.model_type = self.model.model.model_type
-        super().__init__(model_type=self.model.model.model_type, tool_reg=tool_reg, trace=trace,
+        super().__init__(model_type=self.model.model.model_type, tool_reg=tool_reg, logger=logger,
                          sysmsg_leadin=sysmsg_leadin, remove_used_tools=remove_used_tools)
 
     async def complete(self, messages, stream=True, json_response=False, json_schema=None,
@@ -80,10 +80,12 @@ class model_manager(model_client_mixin):
 
         '''
         toolset = toolset or self.toolset
-        schema_str = json.dumps(json_schema)
+        # schema_str = json.dumps(json_schema)
         req_tools = self._resolve_tools(toolset)
         req_tool_spec = [ s for f, s in req_tools.values() ]
 
+        if max_trips < 1:
+            raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
         while max_trips:
             first_chunk = True
             tool_call_resp = None
@@ -130,21 +132,24 @@ class model_manager(model_client_mixin):
                 break
 
     async def _completion_trip(self, messages, stream, req_tool_spec, max_tokens=128, temperature=0.1):
-        req_tool_spec = [ (t.dictify() if isinstance(t, V1Function) else t) for t in req_tool_spec ]
-        schema, tool_sysmsg = process_tool_sysmsg(req_tool_spec, leadin=self.sysmsg_leadin)
+        # schema, tool_sysmsg = process_tool_sysmsg(req_tool_spec, self.logger, leadin=self.sysmsg_leadin)
+        # Schema, including no-tool fallback, plus string spec of available tools, for use in constructing sysmsg
+        full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(req_tool_spec)
         if stream:
-            responder = ToolCallStreamingResponder(self.model, self.model_path, req_tool_spec, schema, tool_sysmsg)
+            responder = ToolCallStreamingResponder(self.model, self.model_path)
         else:
-            responder = ToolCallResponder(self.model_path, self.model_type, schema, tool_sysmsg)
+            responder = ToolCallResponder(self.model_path, self.model_type)
+        messages = self.reconstruct_messages(messages, sysmsg=sysmsg)
         # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
         cache_prompt=False
-        async for resp in self._do_completion(messages, schema, responder, cache_prompt=cache_prompt,
+        async for resp in self._do_completion(messages, full_schema, responder, cache_prompt=cache_prompt,
                                                 max_tokens=max_tokens, temperature=temperature):
             yield resp
 
     async def _do_completion(self, messages, schema, responder, cache_prompt=False, max_tokens=128, temperature=0.1):
-        'Actual trigger the low-level sampling'
+        'Actually trigger the low-level sampling'
         prompt_tokens = None
+        # print(f'🧰 Tool {schema=}\n{sysmsg=}', file=sys.stderr)
         for result in self.model.completion(messages, schema, max_tokens=max_tokens, temp=temperature,
                                             cache_prompt=cache_prompt):
             if result['op'] == 'evaluatedPrompt':
@@ -159,4 +164,4 @@ class model_manager(model_client_mixin):
                     result['reason'], prompt_tokens, completion_tokens
                 )
             else:
-                raise RuntimeError(f'Unknown resule operation {result["op"]}')
+                raise RuntimeError(f'Unknown result operation {result["op"]}')

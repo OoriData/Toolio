@@ -4,9 +4,37 @@
 # toolio.prompt_helper
 
 import json
+# from itertools import chain
+
+from toolio.http_schematics import V1Function
 
 from toolio.common import LANG, model_flag, DEFAULT_FLAGS
 from toolio.http_schematics import V1ChatMessage
+
+
+class multi_tool_prompt_default(dict):
+    def __missing__(self, key):
+        match key:
+            case 'leadin':
+                return LANG['multi_tool_prompt_leadin']
+            case 'tail':
+                return LANG['multi_tool_prompt_tail']
+            case _:
+                raise KeyError(f'Unknown formattr parameter {key}')
+
+
+class single_tool_prompt_default(dict):
+    def __missing__(self, key):
+        match key:
+            case 'leadin':
+                return LANG['one_tool_prompt_leadin']
+            case 'tail':
+                return LANG['one_tool_prompt_tail']
+            case _:
+                raise KeyError(f'Unknown formattr parameter {key}')
+
+
+PROMPT_FORMATTER = '{leadin}\n{tool_spec}\n{tail}'
 
 
 def enrich_chat_for_tools(msgs, tool_prompt, model_flags):
@@ -23,12 +51,14 @@ def enrich_chat_for_tools(msgs, tool_prompt, model_flags):
         msgs.insert(0, V1ChatMessage(role='user', content=tool_prompt))
 
 
-def set_tool_response(msgs, tool_call_id, tool_name, tool_result, model_flags=DEFAULT_FLAGS):
+def set_tool_response(msgs, tool_call_id, tool_name, tool_result, continue_msg='', model_flags=DEFAULT_FLAGS):
     '''
     msgs - chat messages to augment
     tool_response - response generatded by selected tool
     model_flags - flags indicating the expectations of the hosted LLM
     '''
+    if not(continue_msg):
+        continue_msg = 'Please use this information to continue your response.'
     # XXX: model_flags = None ⇒ assistant-style tool response. Is this the default we want?
     if model_flag.TOOL_RESPONSE in model_flags:
         msgs.append({
@@ -48,45 +78,41 @@ def set_tool_response(msgs, tool_call_id, tool_name, tool_result, model_flags=DE
                 msgs.append({'role': 'assistant', 'content': tool_response_text})
         else:
             msgs.append({'role': 'assistant', 'content': tool_response_text})
+        msgs.append({'role': 'user', 'content': continue_msg})
 
 
-def single_tool_prompt(tool, tool_schema, leadin=None):
-    leadin = leadin or LANG['one_tool_prompt_leadin']
-    return f'''
-{leadin} {tool["name"]}: {tool["description"]}
-{LANG["one_tool_prompt_schemalabel"]}: {json.dumps(tool_schema)}
-{LANG["one_tool_prompt_tail"]}
-'''
+# XXX: Not currently used
+# def select_tool_prompt(self, tools, tool_schemas, separator='\n', leadin=None):
+#     'Construct a prompt to offer the LLM multiple tools'
+#     leadin = leadin or LANG['multi_tool_prompt_leadin']
+#     toollist = separator.join(
+#         [f'\n{LANG["select_tool_prompt_toollabel"]} {tool["name"]}: {tool["description"]}\n'
+#             f'{LANG["select_tool_prompt_schemalabel"]}: {json.dumps(tool_schema)}\n'
+#             for tool, tool_schema in zip(tools, tool_schemas) ])
+#     return f'''
+# {leadin}
+# {toollist}
+# {LANG["select_tool_prompt_tail"]}
+# '''
 
 
-def multiple_tool_prompt(tools, tool_schemas, separator='\n', leadin=None):
-    leadin = leadin or LANG['multi_tool_prompt_leadin']
-    toollist = separator.join(
-        [f'\nTool {tool["name"]}: {tool["description"]}\nInvocation schema: {json.dumps(tool_schema)}\n'
-            for tool, tool_schema in zip(tools, tool_schemas) ])
-    return f'''
-{leadin}
-{toollist}
-{LANG["multi_tool_prompt_tail"]}
-'''
+# XXX: no_tool_desc can just be one of the defalted params
+def process_tools_for_sysmsg(tools, separator='\n', **kwargs):
+    '''
+    Given a set of tools, format for use in a system prompt, and other modularized processing
 
-
-def select_tool_prompt(self, tools, tool_schemas, separator='\n', leadin=None):
-    leadin = leadin or LANG['multi_tool_prompt_leadin']
-    toollist = separator.join(
-        [f'\n{LANG["select_tool_prompt_toollabel"]} {tool["name"]}: {tool["description"]}\n'
-            f'{LANG["select_tool_prompt_schemalabel"]}: {json.dumps(tool_schema)}\n'
-            for tool, tool_schema in zip(tools, tool_schemas) ])
-    return f'''
-{leadin}
-{toollist}
-{LANG["select_tool_prompt_tail"]}
-'''
-
-
-def process_tool_sysmsg(tools, leadin=None):
-    # print(f'{tools=} | {leadin=}')
-    function_schemas = [
+    Args:
+        no_tool_desc: description to use for the default get-out-of-jail model response
+    '''
+    # Start by noramalizing away from Pydantic form
+    tools = [ (t.dictify() if isinstance(t, V1Function) else t) for t in tools ]
+    toolio_none = {
+        'name': 'toolio_none',
+        'description': 'Call this tool to indicate that no other provided tool is useful for responding to the user',
+        'parameters': {'type': 'object', 'properties':
+                       {'response': {'type': 'string', 'description': 'Your normal response to the user'}}}}
+    tools.append(toolio_none)
+    tool_schemas = [
         {
             'type': 'object',
             'properties': {
@@ -97,11 +123,18 @@ def process_tool_sysmsg(tools, leadin=None):
         }
         for fn in tools
     ]
-    if len(function_schemas) == 1:
-        schema = function_schemas[0]
-        tool_sysmsg = single_tool_prompt(tools[0], function_schemas[0], leadin=leadin)
+    if len(tool_schemas) == 2:
+        # Single tool provided (second is the no-tool escape)
+        tool_str = separator.join(
+            [f'\nTool name: {tool["name"]}\n {tool["description"]}\nInvocation schema:\n{json.dumps(tool_schema)}'
+                for tool, tool_schema in zip(tools, tool_schemas) ])
     else:
-        schema = {'type': 'array', 'items': {'anyOf': function_schemas}}
-        tool_sysmsg = multiple_tool_prompt(tools, function_schemas, leadin=leadin)
-    # print(f'{tool_sysmsg=}')
-    return schema, tool_sysmsg
+        # XXX: Use LANG['one_tool_prompt_schemalabel']
+        tool_str = json.dumps(tool_schemas)
+
+    full_schema = {'type': 'array', 'items': {'anyOf': tool_schemas}}
+
+    default_cls = single_tool_prompt_default if len(tools) == 1 else multi_tool_prompt_default
+    sysprompt = PROMPT_FORMATTER.format_map(default_cls(tool_spec=tool_str, **kwargs))
+
+    return full_schema, tool_schemas, sysprompt

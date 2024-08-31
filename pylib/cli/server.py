@@ -19,6 +19,7 @@ import json
 import time
 from contextlib import asynccontextmanager
 import warnings
+import logging
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -29,10 +30,9 @@ import uvicorn
 
 from llm_structured_output.util.output import info, warning, debug
 
-from toolio.common import DEFAULT_FLAGS, FLAGS_LOOKUP
+from toolio.common import prompt_handler, DEFAULT_FLAGS, FLAGS_LOOKUP
 from toolio.schema_helper import Model
-from toolio.http_schematics import V1Function
-from toolio.prompt_helper import enrich_chat_for_tools, process_tool_sysmsg
+from toolio.prompt_helper import process_tools_for_sysmsg
 from toolio.http_schematics import V1ChatCompletionsRequest, V1ResponseFormatType
 from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
                               ChatCompletionResponder, ChatCompletionStreamingResponder)
@@ -108,17 +108,16 @@ async def post_v1_chat_completions(req_data: V1ChatCompletionsRequest):
 async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
     messages = req_data.messages[:]
 
-    # Extract valid functions from the req_data.
-    functions = []
-    # print(req_data)
+    # Extract valid tools (functions) from the req_data
+    tools = []
     if req_data.tool_choice == 'none':
         pass
     elif req_data.tools is None:
         warnings.warn('Malformed request: tool_choice is not omitted or "none" yet no tools were provided')
     elif req_data.tool_choice == 'auto':
-        functions = [tool.function for tool in req_data.tools if tool.type == 'function']
+        tools = [tool.function for tool in req_data.tools if tool.type == 'function']
     elif req_data.tool_choice is not None:
-        functions = [
+        tools = [
             next(
                 tool.function
                 for tool in req_data.tools
@@ -130,7 +129,8 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
     model_name = app.state.params['model']
     model_type = app.state.model.model.model_type
     schema = None  # Steering for the LLM output (JSON schema)
-    if functions:
+    phandler = prompt_handler(app.state.model_flags, logger)
+    if tools:
         if req_data.sysmsg_leadin:  # Caller provided sysmsg leadin via protocol
             leadin = req_data.sysmsg_leadin
         elif messages[0].role == 'system':  # Caller provided sysmsg leadin in the chat messages
@@ -138,15 +138,15 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
             del messages[0]
         else:  # Use default leadin
             leadin = None
-        functions = [ (t.dictify() if isinstance(t, V1Function) else t) for t in functions ]
-        schema, tool_sysmsg = process_tool_sysmsg(functions, leadin=leadin)
+        # Schema, including no-tool fallback, plus string spec of available tools, for use in constructing sysmsg
+        full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(tools, leadin=leadin)
+        logger.debug(f'{sysmsg=}')
         if req_data.stream:
-            responder = ToolCallStreamingResponder(model_name, model_type, functions, schema, tool_sysmsg)
+            responder = ToolCallStreamingResponder(model_name, model_type)
         else:
-            responder = ToolCallResponder(model_name, model_type, schema, tool_sysmsg)
+            responder = ToolCallResponder(model_name, model_type)
         if not (req_data.tool_options and req_data.tool_options.no_prompt_steering):
-            enrich_chat_for_tools(messages, tool_sysmsg, app.state.model_flags)
-            # import pprint; pprint.pprint(messages)
+            messages = phandler.reconstruct_messages(messages, sysmsg=sysmsg)
     else:
         if req_data.stream:
             responder = ChatCompletionStreamingResponder(model_name, model_type)
@@ -210,7 +210,12 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
               'Defaults to $WEB_CONCURRENCY environment variable if available, or 1')
 @click.option('--cors_origin', multiple=True,
               help='Origin to be permitted for CORS https://fastapi.tiangolo.com/tutorial/cors/')
-def main(host, port, model, default_schema, default_schema_file, llmtemp, workers, cors_origin):
+@click.option('--loglevel', default='INFO', help='Log level, e.g. DEBUG or INFO')
+def main(host, port, model, default_schema, default_schema_file, llmtemp, workers, cors_origin, loglevel):
+    global logger
+    logging.getLogger().setLevel(loglevel)  # Seems redundant, but is necessary. Python logging is quirky
+    logger = logging.getLogger(__name__)
+
     app_params.update(model=model, default_schema=default_schema, default_schema_fpath=default_schema_file,
                       llmtemp=llmtemp)
     app.add_middleware(CORSMiddleware, allow_origins=list(cors_origin), allow_credentials=True,
@@ -220,7 +225,7 @@ def main(host, port, model, default_schema, default_schema_file, llmtemp, worker
     uvicorn.run('toolio.cli.server:app', host=host, port=port, reload=False, workers=workers)
 
 
-# Implement log config when we 
+# Implement log config when we
 def UNUSED_log_setup(config):
     # Set up logging
     import logging

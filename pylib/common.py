@@ -5,8 +5,9 @@
 '''
 Basically stuff that can be imported without MLX (e.g. for client use on non-Mac platforms)
 '''
-import sys
+# import sys
 import json
+import logging
 import importlib
 import warnings
 from pathlib import Path  # noqa: E402
@@ -66,10 +67,61 @@ with open(HERE / Path('resource/language.toml'), mode='rb') as fp:
     LANG = word_loom.load(fp)
 
 
-class model_client_mixin:
-    def __init__(self, model_type=None, tool_reg=None, trace=False, sysmsg_leadin=None, remove_used_tools=True):
+class prompt_handler:
+    '''
+    Encapsulates functionality for manipulating prompts, client or server side
+    '''
+    # XXX: Default option for sysmgg?
+    def __init__(self, model_type=None, logger=None, sysmsg_leadin=''):
+        self.model_type = model_type
+        if model_type:
+            self.model_flags = FLAGS_LOOKUP.get(model_type, DEFAULT_FLAGS)
+        self.sysmsg_leadin = sysmsg_leadin
+        self.logger = logger or logging
+
+    def reconstruct_messages(self, msgs, sysmsg=None):
         '''
-        Client-side state & routines for Toolio use. Remember that tool-calling occurs on the client side.
+        Take a message set and rules for prompt composition to create a new, effective prompt
+
+        msgs - chat messages to process, potentially including user message and system message
+        sysmsg - explicit override of system message
+        kwargs - overrides for components for the sysmsg template
+        '''
+        self.logger.debug(f'Before: {msgs=}')
+        if not msgs:
+            raise ValueError('Unable to process an empty prompt')
+
+        # Ensure it's a well-formed prompt, ending with at least one user message
+        if msgs[-1]['role'] != 'user':
+            raise ValueError('Final message in the chat prompt must have a \'user\' role')
+
+        # Index the current system roles
+        system_indices = [i for i, m in enumerate(msgs) if m['role'] == 'system']
+        # roles = [m['role'] for m in msgs]
+        # XXX Should we at least warn about any empty messages?
+
+        if sysmsg:
+            # Override any existing system messages by removing, then adding the one
+            new_msgs = [m for m in msgs if m['role'] != 'system']
+            new_msgs.insert(0, {'role': 'system', 'content': sysmsg})
+        else:
+            new_msgs = msgs[:]
+
+        self.logger.debug(f'After: {new_msgs=}')
+        return new_msgs
+
+
+class model_client_mixin(prompt_handler):
+    '''
+    Encapsulates tool registry. Remember that tool-calling occurs on the client side.
+    '''
+    def __init__(self, model_type=None, logger=None, sysmsg_leadin='', tool_reg=None, remove_used_tools=True):
+        '''
+        Args:
+
+        logger - logger object, handy for tracing operations
+
+        sysmsg_leadin - Override the system message used to prime the model for tool-calling
 
         tool_reg (list) - Tools with available implementations, in registry format, i.e. each item is one of:
             * Python import path for a callable annotated (i.e. using toolio.tool.tool decorator)
@@ -77,15 +129,10 @@ class model_client_mixin:
             * tuple of (callable, schema), with separately specified schema
             * tuple of (None, schema), in which case a tool is declared (with schema) but with no implementation
 
-        trace - send annotations to STDERR to trace the tool-calling process
-
-        sysmsg_leadin - Override the system message used to prime the model for tool-calling
+        remove_used_tools - if True each tool will only be an option until the LLM calls it,
+                            after which it will be removed from the options in subsequent trips
         '''
-        self.model_type = model_type
-        if model_type:
-            self.model_flags = FLAGS_LOOKUP.get(model_type, DEFAULT_FLAGS)
-        self.sysmsg_leadin = sysmsg_leadin
-        self._trace = trace
+        super().__init__(model_type=model_type, logger=logger, sysmsg_leadin=sysmsg_leadin)
         self._remove_used_tools = remove_used_tools
         self._tool_registry = {}
         # Prepare library of tools
@@ -105,7 +152,7 @@ class model_client_mixin:
             * actual callable, annotated (i.e. using toolio.tool.tool decorator)
             * plain callable, with schema provided
             * None, with schema provided, in which case a tool is declared but lacking implementation
-        
+
         schema - explicit schema, i.e. {'name': tname, 'description': tdesc,
                   'parameters': {'type': 'object', 'properties': t_schema_params, 'required': t_required_list}}
 
@@ -136,7 +183,8 @@ class model_client_mixin:
             schema = getattr(funcobj, 'schema', None)
             if schema is None:
                 raise RuntimeError(f'No schema provided for tool function {funcobj}')
-            # assert schema['name'] = funcobj.name  # Do we care abotu this?
+            # assert schema['name'] = funcobj.name  # Do we care about this?
+        # print(f'{schema=}')
 
         self._tool_registry[schema['name']] = (funcobj, schema)
 
@@ -158,7 +206,10 @@ class model_client_mixin:
                 name = tool['name']
             elif isinstance(tool, V1Function):  # Pydantic-style schema
                 name = tool.name
-            func, schema = self._tool_registry[name]
+            try:
+                func, schema = self._tool_registry[name]
+            except KeyError as e:
+                raise KeyError(f'Unknown tool: {name}')
             # full_schema = {'type': 'function', 'function': schema}
             # print(f'{full_schema=}')
             # req_tools[name] = (func, full_schema)
@@ -179,18 +230,17 @@ class model_client_mixin:
             if tool is None:
                 warnings.warn(f'Tool called, but it has no function implementation: {callee_name}')
                 continue
-            if self._trace:
-                # FIXME: logger
-                print(f'⚙️ Calling tool {callee_name} with args {callee_args}', file=sys.stderr)
+            if self.logger:
+                self.logger.debug(f'🔧 Calling tool {callee_name} with args {callee_args}')
             # FIXME: Parallelize async calls rather than blocking on each
+            is_callable, is_async_callable = check_callable(tool)
             try:
-                is_callable, is_async_callable = check_callable(tool)
                 if is_async_callable:
                     result = await tool(**callee_args)
                 elif is_callable:
                     result = tool(**callee_args)
             except TypeError as e:
-                # try for special case where the function takes exactly 1 argument
+                # For special case where function takes exactly 1 argument, can just skip keyword form
                 if len(callee_args) == 1 and 'no keyword arguments' in str(e):
                     if is_async_callable:
                         result = await tool(next(iter(callee_args.values())))
@@ -198,8 +248,9 @@ class model_client_mixin:
                         result = tool(next(iter(callee_args.values())))
                 else:
                     raise
-            if self._trace:
-                print(f'⚙️ Tool call result: {result}', file=sys.stderr)
+            if self.logger:
+                self.logger.debug(f'✅ Tool call result: {result}')
+
             tool_responses.append((call_id, callee_name, result))
             # print('Tool result:', result)
             # self._pending_tool_calls[tc['id']] = (tool, callee_args)

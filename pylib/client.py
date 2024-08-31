@@ -11,6 +11,7 @@ Modeled on ogbujipt.llm_wrapper.openai_api & ogbujipt.llm_wrapper.openai_chat_ap
 # import logging
 import json
 import warnings
+import logging
 from enum import Flag, auto
 
 import httpx
@@ -49,7 +50,7 @@ class struct_mlx_chat_api(model_client_mixin):
     >>> resp = asyncio.run(llm_api(prompt_to_chat('Knock knock!')))
     >>> resp.first_choice_text
     '''
-    def __init__(self, base_url=None, default_schema=None, flags=DEFAULT_FLAGS, tool_reg=None, trace=False, **kwargs):
+    def __init__(self, base_url=None, default_schema=None, flags=DEFAULT_FLAGS, tool_reg=None, logger=logging, **kwargs):
         '''
         Args:
             base_url (str, optional): Base URL of the API endpoint
@@ -63,7 +64,7 @@ class struct_mlx_chat_api(model_client_mixin):
                 * tuple of (callable, schema), with separately specified schema
                 * tuple of (None, schema), in which case a tool is declared (with schema) but with no implementation
 
-            trace - Print information (to STDERR) about tool call requests & results. Useful for debugging
+            logger - logger object, handy for tracing operations
 
             kwargs (dict, optional): Extra parameters for the API or for the model host
         '''
@@ -82,7 +83,7 @@ class struct_mlx_chat_api(model_client_mixin):
         # Internal structure to manage these. Key is tool_call_id; value is tuple of callable, kwargs
         # self._pending_tool_calls = {}
         self._flags = flags
-        super().__init__(tool_reg=tool_reg, trace=trace)
+        super().__init__(tool_reg=tool_reg, logger=logger)
 
     async def __call__(self, messages, req='chat/completions', json_schema=None, toolset=None, sysprompt=None,
                        tool_choice=TOOL_CHOICE_AUTO, apikey=None, max_trips=3, trip_timeout=90.0, **kwargs):

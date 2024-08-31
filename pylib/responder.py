@@ -118,24 +118,15 @@ class ToolCallResponder(ChatCompletionResponder):
     > 3. Parse the string into JSON in your code, and call your function with the provided arguments if they exist.
     > 4. Call the model again by appending the function response as a new message, and let the model summarize the results back to the user.
     '''
-    def __init__(self, model_name: str, model_type: str, schema, sysmsg):
+    def __init__(self, model_name: str, model_type):
         super().__init__(model_name, model_type)
-        self.schema = schema
-        self.tool_sysmsg = sysmsg
-        import sys
-        # print(f'🧰 Tool {schema=}\n{sysmsg=}', file=sys.stderr)
 
     def translate_reason(self, reason):
         if reason == 'end':
             return 'tool_calls'
         return super().translate_reason(reason)
 
-    def generation_stopped(
-        self,
-        stop_reason: str,
-        prompt_tokens: int,
-        completion_tokens: int,
-    ):
+    def generation_stopped(self, stop_reason: str, prompt_tokens: int, completion_tokens: int):
         finish_reason = self.translate_reason(stop_reason)
         if finish_reason == 'tool_calls':
             # print(f'{self.content=}')
@@ -178,9 +169,9 @@ class ToolCallResponder(ChatCompletionResponder):
 
 
 class ToolCallStreamingResponder(ToolCallResponder):
-    def __init__(self, model, model_name: str, tools: list[dict], schema, sysmsg):
+    def __init__(self, model, model_name: str, tools: list[dict]):
         model_type = model.model.model_type
-        super().__init__(model_name, model_type, schema, sysmsg)
+        super().__init__(model_name, model_type)
         self.object_type = 'chat.completion.chunk'
 
         # We need to parse the output as it's being generated in order to send

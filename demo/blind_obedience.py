@@ -27,7 +27,7 @@ async def indoor_or_outdoor():
 # MLX_MODEL_PATH = 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'
 MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
 
-toolio_mm = model_manager(MLX_MODEL_PATH, tool_reg=[sky_color, indoor_or_outdoor], trace=True)
+toolio_mm = model_manager(MLX_MODEL_PATH, tool_reg=[sky_color, indoor_or_outdoor])
 
 # System prompt will be used to direct the LLM's tool-calling
 sysprompt = '''\

@@ -25,7 +25,7 @@ def birthday_lookup(date=None):
         return 'No one has a birthday today'
 
 
-@tool('today',
+@tool('today_kfabe',
       desc='Get the current date')
 def today_kfabe(key=None):
     '''

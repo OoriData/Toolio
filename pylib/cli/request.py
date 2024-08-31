@@ -8,7 +8,7 @@ Toolio client convenient CLI tool
 import sys
 import json
 import asyncio
-# import importlib
+import logging
 
 import click
 from ogbujipt.llm_wrapper import prompt_to_chat
@@ -45,10 +45,13 @@ from toolio.client import struct_mlx_chat_api, response_type, cmdline_tools_stru
 @click.option('--temp', default=0.1, type=float, help='LLM sampling temperature')
 
 @click.option('--trip-timeout', default=90.0, type=float, help='Timeout for each LLM API trip, in seconds')
-@click.option('--trace', is_flag=True, default=False,
-              help='Print information (to STDERR) about tool call requests & results. Useful for debugging')
+@click.option('--loglevel', default='INFO', help='Log level, e.g. DEBUG or INFO')
 def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, tool, sysprompt, max_trips, max_tokens,
-         temp, trip_timeout, trace):
+         temp, trip_timeout, loglevel):
+    global logger
+    logging.getLogger().setLevel(loglevel)  # Seems redundant, but is necessary. Python logging is quirky
+    logger = logging.getLogger(__name__)
+
     if prompt_file:
         prompt = prompt_file.read()
     if not prompt:
@@ -67,12 +70,12 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
         tools_obj = None
     if tool:
         tools_obj = list(tool)
-    
+
     tools_list = cmdline_tools_struct(tools_obj)
     # if tool_choice is None and isinstance(tools_obj, dict):
     tool_choice = tools_obj.get('tool_choice', 'auto') if isinstance(tools_obj, dict) else 'auto'
 
-    llm = struct_mlx_chat_api(base_url=apibase, tool_reg=tools_list, trace=trace)
+    llm = struct_mlx_chat_api(base_url=apibase, tool_reg=tools_list, logger=logger)
     resp = asyncio.run(llm(prompt_to_chat(prompt, system=sysprompt), max_tokens=max_tokens, temperature=temp,
                            json_schema=schema_obj, toolset=llm.toolset, tool_choice=tool_choice, max_trips=max_trips,
                            trip_timeout=trip_timeout))
@@ -83,6 +86,4 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
             del tc['function']['arguments']
         print(json.dumps(tcs, indent=2))
     elif resp['response_type'] == response_type.MESSAGE:
-        if trace:
-            print('Final response:', file=sys.stderr)
-        print(resp.first_choice_text)
+        logger.debug(f'Final response: {resp.first_choice_text}')

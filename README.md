@@ -37,6 +37,12 @@ As simple as:
 pip install toolio
 ```
 
+If you're not sure, you can check that you're on an Apple Silicon Mac.
+
+```sh
+python -c "import platform; assert 'arm64' in platform.platform()"
+```
+
 # Host a server
 
 Use `toolio_server` to host MLX-format LLMs for structured output query or function-calling. For example you can host the MLX version of Nous Research's Hermes-2 Θ (Theta).
@@ -64,7 +70,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
    }'
 ```
 
-This is actually not constraining to any output structure, and is just . 
+This is actually not constraining to any output structure, and is just .
 
 ## Specifying an output JSON schema
 
@@ -179,11 +185,11 @@ The examples above might feel like a bit too much work to use a tool; in particu
 pip install -Ur requirements-extra.txt
 ```
 
-Now try a prompt intended to use the calculator tool. To make sure it does, we'll add the `--trace` flag:
+Now try a prompt intended to use the calculator tool. To make sure it does, we'll add the `loglevel` flag:
 
 ```sh
-toolio_request --apibase="http://localhost:8000" --tool=toolio.tool.math.calculator --trace \
---prompt='Usain Bolt ran the 100m race in 9.58s. What was his average velocity?' 
+toolio_request --apibase="http://localhost:8000" --tool=toolio.tool.math.calculator --loglevel=DEBUG \
+--prompt='Usain Bolt ran the 100m race in 9.58s. What was his average velocity?'
 ```
 
 Here's what I got from `Hermes-2-Theta-Llama-3-8B-4bit`:
@@ -192,9 +198,9 @@ Here's what I got from `Hermes-2-Theta-Llama-3-8B-4bit`:
 ⚙️Calling tool calculator with args {'expr': '100/9.58'}
 ⚙️Tool call result: 10.438413361169102
 Final response:
-To calculate Usain Bolt's average velocity, we need to know the distance he covered (100m) and the time it took him to cover that distance (9.58s). 
+To calculate Usain Bolt's average velocity, we need to know the distance he covered (100m) and the time it took him to cover that distance (9.58s).
 
-Average velocity is defined as the total distance traveled divided by the time taken. In this case, the total distance traveled is 100m, and the time taken is 9.58s. 
+Average velocity is defined as the total distance traveled divided by the time taken. In this case, the total distance traveled is 100m, and the time taken is 9.58s.
 
 So, Usain Bolt's average velocity is:
 
@@ -214,7 +220,7 @@ Note: Every tool relies on the agent LLM to correctly construct the tool call ca
 Here's an example of giving the LLM a tool to get today's date, and another with a database lookup from birthdays to employee names and interests.
 
 ```sh
-toolio_request --apibase="http://localhost:8000" --trace \
+toolio_request --apibase="http://localhost:8000" --loglevel=DEBUG \
 --tool=toolio.tool.demo.birthday_lookup \
 --tool=toolio.tool.demo.today_kfabe \
 --sysprompt='You are a writer who reasons step by step and uses research tools in the correct order before writing' \
@@ -270,7 +276,7 @@ def currency_exchange(from_=None, to=None, amount=None):
 
 prompt = 'I need to import a car from Japan. It costs 5 million Yen.'
 'How much must I withdraw from my US bank account'
-llm = struct_mlx_chat_api(base_url='http://localhost:8000', tool_reg=[currency_exchange], trace=True)
+llm = struct_mlx_chat_api(base_url='http://localhost:8000', tool_reg=[currency_exchange])
 resp = asyncio.run(llm(prompt_to_chat(prompt), trip_timeout=60))
 print(resp.first_choice_text)
 ```
@@ -365,7 +371,7 @@ You'll get something like:
 
 ```
 *waves* Hi there! I'm doing well, thank you for asking. How about you?
- -------------------------------------------------------------------------------- 
+ --------------------------------------------------------------------------------
  Number of tokens generated: 32
 ```
 
@@ -406,11 +412,11 @@ SQUARE_ROOT_METADATA = {'name': 'square_root', 'description': 'Get the square ro
                                 'description': 'Number from which to find the square root'}},
                             'required': ['square']}}
 toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
-                          tool_reg=[(sqrt, SQUARE_ROOT_METADATA)], trace=True)
+                          tool_reg=[(sqrt, SQUARE_ROOT_METADATA)])
 
 
 async def query_sq_root(tmm):
-    msgs = [ {'role': 'user', 'content': 'What is the square root of 256?'} ]    
+    msgs = [ {'role': 'user', 'content': 'What is the square root of 256?'} ]
     async for chunk in extract_content(tmm.complete_with_tools(msgs)):
         print(chunk, end='')
 
@@ -426,7 +432,7 @@ You can of course override the built-in prompting.
 ## Overriding the tool-calling system prompt from the command line
 
 ```sh
-echo 'What is the square root of 256?' > /tmp/llmprompt.txt        
+echo 'What is the square root of 256?' > /tmp/llmprompt.txt
 echo '{"tools": [{"type": "function","function": {"name": "square_root","description": "Get the square root of the given number","parameters": {"type": "object", "properties": {"square": {"type": "number", "description": "Number from which to find the square root"}},"required": ["square"]},"pyfunc": "math|sqrt"}}], "tool_choice": "auto"}' > /tmp/toolspec.json
 toolio_request --apibase="http://localhost:8000" --prompt-file=/tmp/llmprompt.txt --tools-file=/tmp/toolspec.json --sysprompt="You are a helpful assistant with access to a tool that you may invoke if needed to answer the user's request. Please use the tool as applicable, even if you think you already know the answer. Give your final answer in Shakespearean English The tool is:
 Tool"
@@ -447,7 +453,7 @@ SQUARE_ROOT_METADATA = {'name': 'square_root', 'description': 'Get the square ro
                                 'description': 'Number from which to find the square root'}},
                             'required': ['square']}}
 toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
-                          tool_reg=[(sqrt, SQUARE_ROOT_METADATA)], trace=True)
+                          tool_reg=[(sqrt, SQUARE_ROOT_METADATA)])
 
 # System prompt will be used to direct the LLM's tool-calling
 SYSPROMPT = 'You are a tutor from Elizabethan England, with access to a tool that you may invoke if needed to answer'

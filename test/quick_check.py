@@ -91,7 +91,7 @@ from math import sqrt  # noqa: E402
 # each tool is either a callable with built-in metadata, or a tuple of (func, metadata)
 TOOLS = [(sqrt, SQUARE_ROOT_METADATA)]
 
-mm = model_manager(model, tool_reg=TOOLS, trace=True)
+mm = model_manager(model, tool_reg=TOOLS)
 print('Model type:', mm.model_type)
 
 resp = asyncio.run(amain(mm))

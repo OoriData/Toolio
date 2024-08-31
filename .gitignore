@@ -1,3 +1,5 @@
+# Used by Pywright Python Language Server (e.g. Zed editor)
+pyrightconfig.json
 **/.env
 env.sh
 .DS_Store

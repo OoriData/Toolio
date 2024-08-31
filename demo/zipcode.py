@@ -4,7 +4,7 @@ demo/zipcode.py
 I asked Nous Hermes Theta about the zip code where I live, and it proceded to get the city wrong and tell me a whole lot about the wrong place.
 
 ```sh
-❯ toolio_request --apibase="http://localhost:8000" \                                           
+❯ toolio_request --apibase="http://localhost:8000" \
 --prompt='Tell me something about life in zip code 80027'
 The zip code 80027 is located in the city of Westminster, Colorado. Westminster is a suburban city situated in the northern part of the Denver-Aurora-Lakewood, CO Metropolitan Statistical Area. Life in zip code 80027 offers a mix of urban and suburban amenities, with easy access to the Denver metropolitan area.
 
@@ -24,7 +24,7 @@ Here are some details about life in the 80027 zip code, which is located in Loui
 **Median Age:** The median age in Louisville is 41.5 years, which is slightly higher than the national median age of
 38.5 years.
 
-**Gender Ratio:** The gender ratio in Louisville is nearly equal, with 50.3% of the population being male and 
+**Gender Ratio:** The gender ratio in Louisville is nearly equal, with 50.3% of the population being male and
 ```
 
 Cuts off for max length, but we've accomplished what we wanted. Well, except that I actually live in Superior
@@ -55,7 +55,7 @@ async def zip_code_info(code=None):
 # MLX_MODEL_PATH = 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'
 MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
 
-toolio_mm = model_manager(MLX_MODEL_PATH, tool_reg=[zip_code_info], trace=True)
+toolio_mm = model_manager(MLX_MODEL_PATH, tool_reg=[zip_code_info])
 
 PROMPT = 'Tell me something about life in zip code 80027'
 async def async_main(tmm):
