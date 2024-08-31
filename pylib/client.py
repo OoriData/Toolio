@@ -76,6 +76,7 @@ class struct_mlx_chat_api(model_client_mixin):
             scheme, authority, path, query, fragment = iri.split_uri_ref(base_url)
             path = path or kwargs.get('api_version', '/v1')
             self.base_url = iri.unsplit_uri_ref((scheme, authority, path, query, fragment))
+            self.base_url = self.base_url.rstrip('/')
         if not self.base_url:
             # FIXME: i18n
             warnings.warn('base_url not provided, so each invocation will require one', stacklevel=2)
