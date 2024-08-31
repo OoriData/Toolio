@@ -76,7 +76,7 @@ class struct_mlx_chat_api(model_client_mixin):
             scheme, authority, path, query, fragment = iri.split_uri_ref(base_url)
             path = path or kwargs.get('api_version', '/v1')
             self.base_url = iri.unsplit_uri_ref((scheme, authority, path, query, fragment))
-            self.base_url = self.base_url.rstrip('/')
+            # self.base_url = self.base_url.rstrip('/')  # SHould already e free of trailing /
         if not self.base_url:
             # FIXME: i18n
             warnings.warn('base_url not provided, so each invocation will require one', stacklevel=2)
@@ -111,14 +111,15 @@ class struct_mlx_chat_api(model_client_mixin):
 
             kwargs (dict, optional): Extra parameters to pass to the model via API.
                 See Completions.create in OpenAI API, but in short, these:
-                best_of, echo, frequency_penalty, logit_bias, logprobs, max_tokens, n
-                presence_penalty, seed, stop, stream, suffix, temperature, top_p, userq
+                temperature, max_tokens, best_of, echo, frequency_penalty, logit_bias, logprobs,
+                presence_penalty, seed, stop, stream, suffix, top_p, userq
         Returns:
             dict: JSON response from the LLM
         '''
         # Uncomment for test case construction
         # print('MESSAGES', messages, '\n', 'json_schema', json_schema, '\n', 'TOOLS', toolset)
         toolset = toolset or self.toolset
+        req = req.strip('/')
         req_tools = self._resolve_tools(toolset)
         req_tool_spec = [ s for f, s in req_tools.values() ]
 
@@ -160,16 +161,17 @@ class struct_mlx_chat_api(model_client_mixin):
                     # self.update_tool_calls(resp)
                     if not max_trips:
                         # If there are no more available trips, don't bother calling the tools
+                        logger.debug('Maximum trips exhausted')
                         return resp
                     tool_responses = await self._execute_tool_calls(resp, req_tools)
-                    for call_id, callee_name, result in tool_responses:
+                    for call_id, callee_name, callee_args, result in tool_responses:
                         model_type = resp.get(TOOLIO_MODEL_TYPE_FIELD)
                         model_flags = FLAGS_LOOKUP.get(model_type, DEFAULT_MODEL_FLAGS)
                         # print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
                         if not model_flags:
                             warnings.warn(f'Unknown model type {model_type} specified by server. Likely client/server version skew')
                         # logging.info(f'{messages=}')
-                        set_tool_response(messages, call_id, callee_name, str(result), model_flags)
+                        set_tool_response(messages, call_id, callee_name, callee_args, str(result), model_flags=model_flags)
                         # logging.info(f'{messages=}')
                         if tool_flag.REMOVE_USED_TOOLS in self._flags:
                             # Many FLOSS LLMs get confused if they see a tool definition still in the response back
@@ -200,6 +202,8 @@ class struct_mlx_chat_api(model_client_mixin):
     async def _http_trip(self, req, req_data, timeout, apikey, **kwargs):
         '''
         Single call/response to toolio_server. Multiple might be involved in a single tool-calling round
+
+        req must not end with '/'
         '''
         header = {'Content-Type': 'application/json'}
         # if apikey is None:
@@ -217,7 +221,7 @@ class struct_mlx_chat_api(model_client_mixin):
                 resp = llm_response.from_openai_chat(res_json)
                 return resp
             else:
-                raise RuntimeError(f'Unexpected response from {self.base_url}{req}:\n{repr(result)}')
+                raise RuntimeError(f'Unexpected response from {self.base_url}/{req}:\n{repr(result)}')
 
     def lookup_tool(self, name):
         '''

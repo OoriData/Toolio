@@ -110,9 +110,9 @@ class model_manager(model_client_mixin):
             if tool_call_resp:
                 max_trips -= 1
                 tool_responses = await self._execute_tool_calls(resp, req_tools)
-                for call_id, callee_name, result in tool_responses:
+                for call_id, callee_name, callee_args, result in tool_responses:
                     # print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
-                    set_tool_response(messages, call_id, callee_name, str(result), self.model_flags)
+                    set_tool_response(messages, call_id, callee_name, callee_args, str(result), model_flags=self.model_flags)
                 called_names = [ callee_name for call_id, callee_name, result in tool_responses ]
                 if self._remove_used_tools:
                     # Many FLOSS LLMs get confused if they see a tool definition still in the response back

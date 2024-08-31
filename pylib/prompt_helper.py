@@ -51,7 +51,7 @@ def enrich_chat_for_tools(msgs, tool_prompt, model_flags):
         msgs.insert(0, V1ChatMessage(role='user', content=tool_prompt))
 
 
-def set_tool_response(msgs, tool_call_id, tool_name, tool_result, continue_msg='', model_flags=DEFAULT_FLAGS):
+def set_tool_response(msgs, tool_call_id, tool_name, call_args, call_result, continue_msg='', model_flags=DEFAULT_FLAGS):
     '''
     msgs - chat messages to augment
     tool_response - response generatded by selected tool
@@ -65,11 +65,12 @@ def set_tool_response(msgs, tool_call_id, tool_name, tool_result, continue_msg='
             'tool_call_id': tool_call_id,
             'role': 'tool',
             'name': tool_name,
-            'content': tool_result,
+            'content': call_result,
         })
     else:
         # FIXME: Separate out natural language
-        tool_response_text = f'Result of the call to {tool_name}: {tool_result}'
+        tool_response_text =  f'Called tool {tool_name} with arguments {call_args}. Result: {call_result}'
+        # tool_response_text = f'Result of the call to {tool_name}: {tool_result}'
         if model_flag.USER_ASSISTANT_ALT in model_flags:
             # If there is already an assistant msg from tool-calling, merge it
             if msgs[-1]['role'] == 'assistant':

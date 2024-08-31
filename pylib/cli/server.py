@@ -33,10 +33,21 @@ from llm_structured_output.util.output import info, warning, debug
 from toolio.common import prompt_handler, DEFAULT_FLAGS, FLAGS_LOOKUP
 from toolio.schema_helper import Model
 from toolio.prompt_helper import process_tools_for_sysmsg
-from toolio.http_schematics import V1ChatCompletionsRequest, V1ResponseFormatType
+from toolio.http_schematics import V1ChatMessage, V1ChatCompletionsRequest, V1ResponseFormatType
 from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
                               ChatCompletionResponder, ChatCompletionStreamingResponder)
 
+
+# List of known loggers with too much chatter at debug level
+TAME_LOGGERS = ['asyncio', 'httpcore', 'httpx']
+for l in TAME_LOGGERS:
+    logging.getLogger(l).setLevel(logging.WARNING)
+
+# Note: above explicit list is a better idea than some sort of blanket approach such as the following:
+# for handler in logging.root.handlers:
+#     handler.addFilter(logging.Filter('toolio'))
+
+# There is further log config below, in main()
 
 NUM_CPUS = int(os.cpu_count())
 app_params = {}
@@ -106,7 +117,7 @@ async def post_v1_chat_completions(req_data: V1ChatCompletionsRequest):
 
 
 async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
-    messages = req_data.messages[:]
+    messages = [ (m.dictify() if isinstance(m, V1ChatMessage) else m) for m in req_data.messages ]
 
     # Extract valid tools (functions) from the req_data
     tools = []
@@ -133,8 +144,8 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
     if tools:
         if req_data.sysmsg_leadin:  # Caller provided sysmsg leadin via protocol
             leadin = req_data.sysmsg_leadin
-        elif messages[0].role == 'system':  # Caller provided sysmsg leadin in the chat messages
-            leadin = messages[0].content
+        elif messages[0]['role'] == 'system':  # Caller provided sysmsg leadin in the chat messages
+            leadin = messages[0]['content']
             del messages[0]
         else:  # Use default leadin
             leadin = None
@@ -212,9 +223,10 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
               help='Origin to be permitted for CORS https://fastapi.tiangolo.com/tutorial/cors/')
 @click.option('--loglevel', default='INFO', help='Log level, e.g. DEBUG or INFO')
 def main(host, port, model, default_schema, default_schema_file, llmtemp, workers, cors_origin, loglevel):
-    global logger
-    logging.getLogger().setLevel(loglevel)  # Seems redundant, but is necessary. Python logging is quirky
+    global logger  # Remove this line when we modularize
+    logging.basicConfig(level=loglevel)
     logger = logging.getLogger(__name__)
+    logger.setLevel(loglevel)  # Seems redundant, but is necessary. Python logging is quirky
 
     app_params.update(model=model, default_schema=default_schema, default_schema_fpath=default_schema_file,
                       llmtemp=llmtemp)

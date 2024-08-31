@@ -251,7 +251,7 @@ class model_client_mixin(prompt_handler):
             if self.logger:
                 self.logger.debug(f'✅ Tool call result: {result}')
 
-            tool_responses.append((call_id, callee_name, result))
+            tool_responses.append((call_id, callee_name, callee_args, result))
             # print('Tool result:', result)
             # self._pending_tool_calls[tc['id']] = (tool, callee_args)
         return tool_responses

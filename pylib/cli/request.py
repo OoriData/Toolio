@@ -15,6 +15,16 @@ from ogbujipt.llm_wrapper import prompt_to_chat
 
 from toolio.client import struct_mlx_chat_api, response_type, cmdline_tools_struct
 
+# List of known loggers with too much chatter at debug level
+TAME_LOGGERS = ['asyncio', 'httpcore', 'httpx']
+for l in TAME_LOGGERS:
+    logging.getLogger(l).setLevel(logging.WARNING)
+
+# Note: above explicit list is a better idea than some sort of blanket approach such as the following:
+# for handler in logging.root.handlers:
+#     handler.addFilter(logging.Filter('toolio'))
+
+# There is further log config below, in main()
 
 @click.command()
 @click.option('--apibase', default='http://127.0.0.1:8000',
@@ -38,7 +48,7 @@ from toolio.client import struct_mlx_chat_api, response_type, cmdline_tools_stru
 @click.option('--sysprompt', help='Optional system prompt')
 @click.option('--max-trips', default=3, type=int,
     help='Maximum number of times to return to the LLM, presumably with tool results. If there is no final response by the time this is reached, post a message with the remaining unused tool invocations')
-@click.option("--max-tokens", type=int, help='Maximum number of tokens to generate. Will be applied to each trip')
+@click.option("--max-tokens", type=int, default=1024, help='Maximum number of tokens to generate. Will be applied to each trip')
 
 @click.option('--tool', '-t', multiple=True, help='Full Python attribute path to a Toolio-specific callable to be made available to the LLM')
 
@@ -48,9 +58,9 @@ from toolio.client import struct_mlx_chat_api, response_type, cmdline_tools_stru
 @click.option('--loglevel', default='INFO', help='Log level, e.g. DEBUG or INFO')
 def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, tool, sysprompt, max_trips, max_tokens,
          temp, trip_timeout, loglevel):
-    global logger
-    logging.getLogger().setLevel(loglevel)  # Seems redundant, but is necessary. Python logging is quirky
+    logging.basicConfig(level=loglevel)
     logger = logging.getLogger(__name__)
+    logger.setLevel(loglevel)  # Seems redundant, but is necessary. Python logging is quirky
 
     if prompt_file:
         prompt = prompt_file.read()

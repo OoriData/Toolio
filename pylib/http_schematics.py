@@ -20,6 +20,9 @@ class V1ChatMessage(BaseModel):
     role: V1ChatMessageRole
     content: str
 
+    def dictify(self):
+        return {'role': self.role, 'content': self.content}
+
 
 class V1Function(BaseModel):
     name: str
