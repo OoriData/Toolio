@@ -110,8 +110,7 @@ async def post_v1_chat_completions(req_data: V1ChatCompletionsRequest):
             media_type='text/event-stream',
         )
     else:
-        # FUTURE: Python 3.10 can use `await anext(x))` instead of `await x.__anext__()`.
-        response = await post_v1_chat_completions_impl(req_data).__anext__()
+        response = await anext(post_v1_chat_completions_impl(req_data))
         debug('RESPONSE', response)
         return response
 
@@ -158,6 +157,7 @@ async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
             responder = ToolCallResponder(model_name, model_type)
         if not (req_data.tool_options and req_data.tool_options.no_prompt_steering):
             messages = phandler.reconstruct_messages(messages, sysmsg=sysmsg)
+        schema = full_schema
     else:
         if req_data.stream:
             responder = ChatCompletionStreamingResponder(model_name, model_type)

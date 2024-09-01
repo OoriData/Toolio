@@ -445,7 +445,7 @@ Tool"
 
 ## Overriding the tool-calling system prompt from the Python API
 
-In order to override the system prompt from code, just se it in the initial chat message as the `system` role.
+In order to override the system prompt from code, just set it in the initial chat message as the `system` role.
 
 ```py
 import asyncio
@@ -478,9 +478,8 @@ asyncio.run(query_sq_root(toolio_mm))
 
 In which case you can express a response such as:
 
-```
-Good sir or madam, the square root of 256 is indeed 16. Mayhap thou wouldst like to know more of this wondrous number? I am at thy service.
-```
+> By the tool's decree, the square root of 256, a number most fair,
+> Is sixteen, a digit most true, and a figure most rare.
 
 # More examples
 
