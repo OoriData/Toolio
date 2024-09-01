@@ -15,10 +15,8 @@ Note: you can also point `--model` at a downloaded or converted MLX model on loc
 '''
 
 import os
-import json
 import time
 from contextlib import asynccontextmanager
-import warnings
 import logging
 
 from fastapi import FastAPI, Request, status
@@ -30,12 +28,10 @@ import uvicorn
 
 from llm_structured_output.util.output import info, warning, debug
 
-from toolio.common import prompt_handler, DEFAULT_FLAGS, FLAGS_LOOKUP
+from toolio.http_schematics import V1ChatCompletionsRequest
+from toolio.common import DEFAULT_FLAGS, FLAGS_LOOKUP
 from toolio.schema_helper import Model
-from toolio.prompt_helper import process_tools_for_sysmsg
-from toolio.http_schematics import V1ChatMessage, V1ChatCompletionsRequest, V1ResponseFormatType
-from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
-                              ChatCompletionResponder, ChatCompletionStreamingResponder)
+from toolio.http_impl import post_v1_chat_completions_impl
 
 
 # List of known loggers with too much chatter at debug level
@@ -106,103 +102,13 @@ async def post_v1_chat_completions(req_data: V1ChatCompletionsRequest):
     debug('REQUEST', req_data)
     if req_data.stream:
         return StreamingResponse(
-            content=post_v1_chat_completions_impl(req_data),
+            content=post_v1_chat_completions_impl(app.state, req_data),
             media_type='text/event-stream',
         )
     else:
-        response = await anext(post_v1_chat_completions_impl(req_data))
+        response = await anext(post_v1_chat_completions_impl(app.state, req_data))
         debug('RESPONSE', response)
         return response
-
-
-async def post_v1_chat_completions_impl(req_data: V1ChatCompletionsRequest):
-    messages = [ (m.dictify() if isinstance(m, V1ChatMessage) else m) for m in req_data.messages ]
-
-    # Extract valid tools (functions) from the req_data
-    tools = []
-    if req_data.tool_choice == 'none':
-        pass
-    elif req_data.tools is None:
-        warnings.warn('Malformed request: tool_choice is not omitted or "none" yet no tools were provided')
-    elif req_data.tool_choice == 'auto':
-        tools = [tool.function for tool in req_data.tools if tool.type == 'function']
-    elif req_data.tool_choice is not None:
-        tools = [
-            next(
-                tool.function
-                for tool in req_data.tools
-                if tool.type == 'function'
-                and tool.function.name == req_data.function_call.name
-            )
-        ]
-
-    model_name = app.state.params['model']
-    model_type = app.state.model.model.model_type
-    schema = None  # Steering for the LLM output (JSON schema)
-    phandler = prompt_handler(app.state.model_flags, logger)
-    if tools:
-        if req_data.sysmsg_leadin:  # Caller provided sysmsg leadin via protocol
-            leadin = req_data.sysmsg_leadin
-        elif messages[0]['role'] == 'system':  # Caller provided sysmsg leadin in the chat messages
-            leadin = messages[0]['content']
-            del messages[0]
-        else:  # Use default leadin
-            leadin = None
-        # Schema, including no-tool fallback, plus string spec of available tools, for use in constructing sysmsg
-        full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(tools, leadin=leadin)
-        logger.debug(f'{sysmsg=}')
-        if req_data.stream:
-            responder = ToolCallStreamingResponder(model_name, model_type)
-        else:
-            responder = ToolCallResponder(model_name, model_type)
-        if not (req_data.tool_options and req_data.tool_options.no_prompt_steering):
-            messages = phandler.reconstruct_messages(messages, sysmsg=sysmsg)
-        schema = full_schema
-    else:
-        if req_data.stream:
-            responder = ChatCompletionStreamingResponder(model_name, model_type)
-        else:
-            responder = ChatCompletionResponder(model_name, model_type)
-        if req_data.response_format:
-            assert req_data.response_format.type == V1ResponseFormatType.JSON_OBJECT
-            # The req_data may specify a JSON schema (this option is not in the OpenAI API)
-            if req_data.response_format.json_schema:
-                schema = json.loads(req_data.response_format.json_schema)
-            else:
-                schema = {'type': 'object'}
-
-    # import pprint; pprint.pprint(messages)
-    if schema is None:
-        debug('Warning: no JSON schema provided. Generating without one.')
-    else:
-        debug('Using schema:', schema)
-
-    info('Starting generation…')
-
-    prompt_tokens = None
-
-    for result in app.state.model.completion(
-        messages,
-        schema=schema,
-        max_tokens=req_data.max_tokens,
-        temp=req_data.temperature,
-        # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
-        # cache_prompt=True,
-        cache_prompt=False,
-    ):
-        if result['op'] == 'evaluatedPrompt':
-            prompt_tokens = result['token_count']
-        elif result['op'] == 'generatedTokens':
-            message = responder.generated_tokens(result['text'])
-            if message:
-                yield message
-        elif result['op'] == 'stop':
-            completion_tokens = result['token_count']
-            yield responder.generation_stopped(
-                result['reason'], prompt_tokens, completion_tokens
-            )
-        else:
-            assert False
 
 
 @click.command()
@@ -237,7 +143,7 @@ def main(host, port, model, default_schema, default_schema_file, llmtemp, worker
     uvicorn.run('toolio.cli.server:app', host=host, port=port, reload=False, workers=workers)
 
 
-# Implement log config when we
+# TODO: Implement log config, probably as a server cli arg
 def UNUSED_log_setup(config):
     # Set up logging
     import logging

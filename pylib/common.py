@@ -87,7 +87,6 @@ class prompt_handler:
         sysmsg - explicit override of system message
         kwargs - overrides for components for the sysmsg template
         '''
-        self.logger.debug(f'Before: {msgs=}')
         if not msgs:
             raise ValueError('Unable to process an empty prompt')
 
@@ -107,7 +106,6 @@ class prompt_handler:
         else:
             new_msgs = msgs[:]
 
-        self.logger.debug(f'After: {new_msgs=}')
         return new_msgs
 
 

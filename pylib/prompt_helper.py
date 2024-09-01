@@ -58,7 +58,7 @@ def set_tool_response(msgs, tool_call_id, tool_name, call_args, call_result, con
     model_flags - flags indicating the expectations of the hosted LLM
     '''
     if not(continue_msg):
-        continue_msg = 'Please use this information to continue your response.'
+        continue_msg = 'Please use this information to continue your response, or to give a final response.'
     # XXX: model_flags = None ⇒ assistant-style tool response. Is this the default we want?
     if model_flag.TOOL_RESPONSE in model_flags:
         msgs.append({
