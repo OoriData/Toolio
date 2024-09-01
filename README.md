@@ -70,7 +70,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
    }'
 ```
 
-This is actually not constraining to any output structure, and is just .
+This is actually not constraining to any output structure, and is just using the LLM as is. The result will be in complx-looking JSON, but read on for more straightforward ways to query against a Toolio server.
 
 ## Specifying an output JSON schema
 
@@ -89,7 +89,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
    }'
 ```
 
-The key here is specification of a JSON schema. It's escaped for the command line shell above, so here it is in its regular form:
+The key here is specification of a JSON schema. The schema is escaped for the command line shell above, so here it is in its regular form:
 
 ```json
 {"type": "object", "properties": {"number": {"type": "number"}}}
@@ -99,7 +99,15 @@ It looks a bit intimidating, at first, if you're not familiar with [JSON schema]
 
 ## Using the command line client instead
 
-cURL is a pretty raw interface for this, though. For example, you have to parse the resulting response JSON. It's a lot easier to use the more specialized command line client tool `toolio_request`. An example of a very simple data extraction use-case:
+cURL is a pretty raw interface for this, though. For example, you have to parse the resulting response JSON. It's a lot easier to use the more specialized command line client tool `toolio_request`. Here is the equivalent too the first cURL example, above:
+
+```sh
+toolio_request --apibase="http://localhost:8000" --prompt="I am thinking of a number between 1 and 10. Guess what it is."
+```
+
+This time you'll just get the straightforward response text, e.g. "Sure, I'll guess 5. Is that your number?"
+
+Here is an example using JSON schema constraint to extract structured data from an unstructured sentence.
 
 ```sh
 export LMPROMPT='Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}'
@@ -195,20 +203,17 @@ toolio_request --apibase="http://localhost:8000" --tool=toolio.tool.math.calcula
 Here's what I got from `Hermes-2-Theta-Llama-3-8B-4bit`:
 
 ```
-⚙️Calling tool calculator with args {'expr': '100/9.58'}
-⚙️Tool call result: 10.438413361169102
-Final response:
-To calculate Usain Bolt's average velocity, we need to know the distance he covered (100m) and the time it took him to cover that distance (9.58s).
+DEBUG:toolio.cli.request:🔧 Calling tool calculator with args {'expr': '(100/9.58)'}
+DEBUG:toolio.cli.request:✅ Tool call result: 10.438413361169102
+To calculate Usain Bolt's average velocity during the 100m race, we divide the total distance by the total time taken. Here's the calculation:
 
-Average velocity is defined as the total distance traveled divided by the time taken. In this case, the total distance traveled is 100m, and the time taken is 9.58s.
+Distance (d) = 100 meters
+Time (t) = 9.58 seconds
 
-So, Usain Bolt's average velocity is:
+Average velocity (v) = Distance / Time
+v = 100 meters / 9.58 seconds ≈ 10.44 meters per second
 
-v_avg = distance / time
-v_avg = 100m / 9.58s
-v_avg = 10.438413361169102 m/s
-
-Therefore, Usain Bolt's average velocity during the 100m race was approximately 10.44 m/s.
+So, Usain Bolt's average velocity during the 100m race was approximately 10.44 meters per second.
 ```
 
 You can see that the LLM got help by calling the tool to calculate `100/9.58`.

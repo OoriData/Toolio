@@ -109,6 +109,12 @@ class model_manager(model_client_mixin):
                 first_chunk = False
             if tool_call_resp:
                 max_trips -= 1
+                bypass_response = self._check_tool_handling_bypass(resp)
+                if bypass_response:
+                    # LLM refused to call a tool, and provided an alternative response
+                    yield bypass_response
+                    break
+
                 tool_responses = await self._execute_tool_calls(resp, req_tools)
                 for call_id, callee_name, callee_args, result in tool_responses:
                     # print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)

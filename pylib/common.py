@@ -142,6 +142,8 @@ class model_client_mixin(prompt_handler):
                 self.register_tool(funcpath_or_obj, schema)
             else:
                 self.register_tool(toolspec)
+        # Low enough level that we'll just let the user manipulate the object to change this
+        self.bypass_tool_name = 'toolio_bypass'
 
     def register_tool(self, funcpath_or_obj, schema=None):
         '''
@@ -215,6 +217,30 @@ class model_client_mixin(prompt_handler):
             # req_tools[name] = (func, full_schema)
             req_tools[name] = (func, schema)
         return req_tools
+
+    def _check_tool_handling_bypass(self, response):
+        '''
+        There is a special tool option given to the LLM, toolio_bypass by default, which allows it to signal,
+        despite the schema constraint, that it has chosen not to call any of the provided tools
+        Check for this case, and return the bypass response, which is just the non-tool response the LLM
+        opts to give
+        '''
+        for tc in response['choices'][0].get('message', {}).get('tool_calls'):
+            if tc['function']['name'] == self.bypass_tool_name:
+                args = json.loads(tc['function']['arguments'])
+                bypass_resp_text = args['response']
+                self.logger.debug(f'LLM chose to bypass function-calling witht he following response: {bypass_resp_text}')
+                # Reconstruct an OpenAI-style response
+                choice = response['choices'][0]
+                full_resp = {
+                    'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': bypass_resp_text},
+                                 'finish_reason': choice['finish_reason']}],
+                                 # Usage is going to be based on the tool-call original, but we probably want that, because it was what's actually consumed
+                                 'usage': response['usage'], 'object': response['object'], 'id': response['id'],
+                                 'created': response['created'], 'model': response['model'], 'toolio.model_type':
+                                 response['toolio.model_type']}
+                return full_resp
+        return None
 
     async def _execute_tool_calls(self, response, req_tools):
         # print('update_tool_calls', response)

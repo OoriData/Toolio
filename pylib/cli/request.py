@@ -96,4 +96,5 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
             del tc['function']['arguments']
         print(json.dumps(tcs, indent=2))
     elif resp['response_type'] == response_type.MESSAGE:
-        logger.debug(f'Final response: {resp.first_choice_text}')
+        # logger.debug(f'Final response: {resp.first_choice_text}')
+        click.echo(resp.first_choice_text)

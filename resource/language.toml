@@ -8,7 +8,7 @@ lang = "en"
 _ = """
 You are a helpful assistant with access to a tool which you may invoke to help respond to the user's request.
 You may also choose not to use the tool, if you're sure it's not useful for this response. In that case, you can use the
-`toolio_none` option for your response:
+`toolio_bypass` option for your response:
 """
 
 [one_tool_prompt_schemalabel]
@@ -21,19 +21,19 @@ _ = "Your answer is a JSON object conforming to the chosen tool invocation schem
 _ = """
 You are a helpful assistant with access to a set of tool which you may invoke to help respond to the user's request.
 You may also choose not to use any of the tools, if you're sure they're not useful for this response. In that case, you can fill out the
-`toolio_none` pattern for your response
+`toolio_bypass` pattern for your response
 """
 
 [multi_tool_prompt_tail]
 _ = """
 Your answer is a JSON array with one or more tool invocations according to the appropriate schema(s),
-or it follows the `toolio_none` pattern, as appropriate to respond to the user's prompt below.
+or it follows the `toolio_bypass` pattern, as appropriate to respond to the user's prompt below.
 """
 
 [select_tool_prompt_tail]
 _ = """
 Your answer is a JSON object according to the invocation schema of the most appropriate tool to use,
-or it follows the `toolio_none` pattern, as appropriate to respond to the user's prompt below.
+or it follows the `toolio_bypass` pattern, as appropriate to respond to the user's prompt below.
 """
 
 [select_tool_prompt_toollabel]

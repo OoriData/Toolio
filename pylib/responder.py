@@ -141,11 +141,11 @@ class ToolCallResponder(ChatCompletionResponder):
                         'id': f'call_{self.id}_{i}',
                         'type': 'function',
                         'function': {
-                            'name': function_call['name'],
-                            'arguments': json.dumps(function_call['arguments']),
+                            'name': tc['name'],
+                            'arguments': json.dumps(tc.get('arguments', {})),
                         },
                     }
-                    for i, function_call in enumerate(tool_calls)
+                    for i, tc in enumerate(tool_calls)
                 ],
             }
         elif finish_reason == 'function_call':

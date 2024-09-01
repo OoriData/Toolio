@@ -107,12 +107,12 @@ def process_tools_for_sysmsg(tools, separator='\n', **kwargs):
     '''
     # Start by noramalizing away from Pydantic form
     tools = [ (t.dictify() if isinstance(t, V1Function) else t) for t in tools ]
-    toolio_none = {
-        'name': 'toolio_none',
+    toolio_bypass = {
+        'name': 'toolio_bypass',
         'description': 'Call this tool to indicate that no other provided tool is useful for responding to the user',
         'parameters': {'type': 'object', 'properties':
                        {'response': {'type': 'string', 'description': 'Your normal response to the user'}}}}
-    tools.append(toolio_none)
+    tools.append(toolio_bypass)
     tool_schemas = [
         {
             'type': 'object',

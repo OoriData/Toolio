@@ -158,11 +158,16 @@ class struct_mlx_chat_api(model_client_mixin):
                 max_trips -= 1
                 # If LLM has asked for tool calls, prepare to loop back
                 if resp['response_type'] == response_type.TOOL_CALL:
-                    # self.update_tool_calls(resp)
+                    bypass_response = self._check_tool_handling_bypass(resp)
+                    if bypass_response:
+                        # LLM refused to call a tool, and provided an alternative response
+                         return llm_response.from_openai_chat(bypass_response)
+
                     if not max_trips:
                         # If there are no more available trips, don't bother calling the tools
-                        logger.debug('Maximum trips exhausted')
+                        self.logger.debug('Maximum trips exhausted')
                         return resp
+
                     tool_responses = await self._execute_tool_calls(resp, req_tools)
                     for call_id, callee_name, callee_args, result in tool_responses:
                         model_type = resp.get(TOOLIO_MODEL_TYPE_FIELD)
