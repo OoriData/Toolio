@@ -11,7 +11,6 @@ from toolio.tool import tool, param
 
 CHAT_COMPLETIONS_URL = '/v1/chat/completions'
 
-
 @pytest.mark.asyncio
 # httpserver fixture from pytest_httpserver starts the dummy server
 async def test_number_guess(httpserver, session_cls):
@@ -34,7 +33,6 @@ async def test_number_guess(httpserver, session_cls):
     assert resp['response_type'] == number_guess_ht.resp_type
     assert resp.first_choice_text == number_guess_ht.resp_text
 
-
 @pytest.mark.asyncio
 async def test_naija_extract(httpserver, session_cls):
     naija_extract_ht = session_cls(
@@ -52,7 +50,6 @@ async def test_naija_extract(httpserver, session_cls):
     assert resp['response_type'] == naija_extract_ht.resp_type
     assert json.loads(resp.first_choice_text.encode('utf-8')) == json.loads(naija_extract_ht.resp_text.encode('utf-8'))
 
-
 @pytest.mark.asyncio
 async def test_boulder_weather_1(httpserver, session_cls):
     boulder_weather_trip1_ht = session_cls(
@@ -68,7 +65,6 @@ async def test_boulder_weather_1(httpserver, session_cls):
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
     resp = await llm(boulder_weather_trip1_ht.req_messages)
     assert resp['response_type'] == boulder_weather_trip1_ht.resp_type
-
 
 @pytest.mark.asyncio
 async def test_square_root(httpserver, session_cls):
@@ -94,7 +90,6 @@ async def test_square_root(httpserver, session_cls):
     assert resp['response_type'] == square_root_ht.resp_type
     assert resp.first_choice_text == square_root_ht.resp_text
 
-
 @tool('currency_exchange', params=[param('from', str, 'Currency to be converted from, e.g. USD, GBP, JPY', True, rename='from_'), param('to', str, 'Currency to be converted to, e.g. USD, GBP, JPY', True), param('amount', float, 'Amount to convert from one currency to another. Just a number, with no other symbols', True)])
 def currency_exchange(from_=None, to=None, amount=None):
     'Tool to convert one currency to another'
@@ -103,7 +98,6 @@ def currency_exchange(from_=None, to=None, amount=None):
     rate = lookup.get((from_, to))
     # print(f'{from_=}, {to=}, {amount=}, {rate=}')
     return rate * amount
-
 
 @pytest.mark.asyncio
 async def test_currency_convert(httpserver, session_cls):

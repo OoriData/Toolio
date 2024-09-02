@@ -171,3 +171,61 @@ class model_manager(model_client_mixin):
                 )
             else:
                 raise RuntimeError(f'Unknown result operation {result["op"]}')
+
+
+class debug_model_manager(model_manager):
+    def __init__(self, model_path, tool_reg=None, logger=logging, sysmsg_leadin=None, remove_used_tools=True):
+        super().__init__(model_path, tool_reg=tool_reg, logger=logger, sysmsg_leadin=sysmsg_leadin,
+                         remove_used_tools=remove_used_tools)
+        self._trip_log = None
+
+    async def _completion_trip(self, messages, stream, req_tool_spec, max_tokens=128, temperature=0.1):
+        '''
+        Execute one LLM request, while taking debug info
+        '''
+        if self._trip_log is None:
+            self._trip_log = []
+        full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(req_tool_spec)
+        self._trip_log.append(({'messages': messages, 'schema': full_schema}))
+        if stream:
+            responder = ToolCallStreamingResponder(self.model, self.model_path)
+        else:
+            responder = ToolCallResponder(self.model_path, self.model_type)
+        messages = self.reconstruct_messages(messages, sysmsg=sysmsg)
+        # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
+        cache_prompt=False
+        resp_chunks = []
+        async for resp in self._do_completion(messages, full_schema, responder, cache_prompt=cache_prompt,
+                                                max_tokens=max_tokens, temperature=temperature):
+            resp_chunks.append(resp)
+            yield resp
+        self._trip_log[-1]['resp_chunks'] = resp_chunks
+
+    def get_trip_log(self):
+        '''
+        Postproces & return log of trips
+        '''
+        if self._trip_log is None:
+            raise RuntimeError('get_trip_log must be called after a completion call')
+
+        for trip in self._trip_log:
+            # Tokenize chat messages
+            trip['tokenized_prompt'] = self.model.simple_tokenizer.apply_chat_template(trip['messages'], tokenize=False)
+            # JSONize schema
+            trip['schema.json'] = json.dumps(trip['schema'], indent=2)
+
+        trip_log = self._trip_log
+        self._trip_log = None
+        return trip_log
+
+    def write_trip_log(self, trip_log, fp):
+        '''
+        Write the trip log to a stream in cut & paste, debug-friendly form
+        '''
+        for i, trip in enumerate(trip_log):
+            fp.write('='*8 + f' TRIP {i} ' + '='*40 + '\n')
+            fp.write('-'*8 + ' PROMPT ' + '='*40 + '\n')
+            fp.write(trip['tokenized_prompt'] + '\n')
+            fp.write('-'*8 + ' SCHEMA ' + '='*40 + '\n')
+            fp.write(trip['schema.json'] + '\n')
+            fp.write('-'*48)

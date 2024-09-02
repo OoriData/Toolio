@@ -57,6 +57,7 @@ class Model:
         '''
         self.model, tokenizer = load(model_path)
         self.tokenizer = HuggingfaceTokenizerHelper(tokenizer)
+        self.simple_tokenizer = tokenizer
         self.vocabulary, self.eos_id = self.tokenizer.extract_vocabulary()
         self.json_schema_acceptor_driver_factory = (
             JsonSchemaAcceptorDriver.driver_factory_for_model(
