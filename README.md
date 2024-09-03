@@ -19,6 +19,8 @@ Builds on: https://github.com/otriscon/llm-structured-output/
   <td>Toolio is primarily developed by the crew at <a href="https://oori.dev/">Oori Data</a>. We offer data pipelines and software engineering services around AI/LLM applications.</td>
 </tr></table>
 
+We'd love your help, though! [Click to learn how to make contributions to the project](https://github.com/OoriData/Toolio/wiki/Notes-for-contributors).
+
 The following video, "Toolio in 10 minutes", is an easy way to learn about the project.
 
 [![Toolio in 10 minutes](https://github.com/user-attachments/assets/fc8dda94-326d-426e-a566-ac8ec60be31f)](https://youtu.be/9DpQYbteakc)
