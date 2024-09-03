@@ -7,11 +7,26 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
-## [Unreleased]
+## [0.5.0] - 20240902
 
 ### Added
 
-- First cut at docs
+- `llm_helper.debug_model_manager`—a way to extract raw prompt & schema/tool-call info for debugging of underlying LLM behavior
+- docs beyond the README (`doc` folder)
+- test cases
+- demo/algebra_tutor.py
+- demo/blind_obedience.py
+
+### Changed
+
+- use of logger rather than trace boolean, throughout
+- further code modularizarion and reorg
+- improvements to default prompting
+- more elegant handling of install from an unsupported OS
+
+### Fixed
+
+- handling of multi-trip scenarios
 
 ## [0.4.2] - 20240807
 

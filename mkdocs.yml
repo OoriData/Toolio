@@ -1,5 +1,13 @@
 docs_dir: doc
 # site_name: Toolio—OpenAI-like HTTP server API implementation which supports tool-calling and other structured LLM response generation (e.g. make it conform to a JSON schema)
-site_name: Toolio—Schema-controlled responses and tool-calling for LLMs on Mac
+site_name: Toolio—Structured outputs, schema-controlled responses and tool-calling for LLMs on Mac
 theme:
   name: material
+repo_url: https://github.com/OoriData/Toolio
+edit_uri: edit/master/doc/
+
+# https://michaelcurrin.github.io/mkdocs-quickstart/tutorial/advanced/
+nav:
+  - Home: index.md
+  - Practical notes: pragmatics.md
+#   - Tutorial (WIP): tutorial.md
