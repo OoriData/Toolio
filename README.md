@@ -29,6 +29,8 @@ The following video, "Toolio in 10 minutes", is an easy way to learn about the p
 <img width="1268" alt="Toolio in 10 minutes still" src="https://github.com/user-attachments/assets/fc8dda94-326d-426e-a566-ac8ec60be31f">
 -->
 
+[Documentation](https://OoriData.github.io/Toolio/)
+
 # Installation
 
 As simple as:
@@ -481,9 +483,10 @@ In which case you can express a response such as:
 > By the tool's decree, the square root of 256, a number most fair,
 > Is sixteen, a digit most true, and a figure most rare.
 
-# More examples
+# Learn more
 
-See the `demo` directory.
+* [Documentation](https://OoriData.github.io/Toolio/)
+* More examples in the `demo` directory
 
 # Credits
 

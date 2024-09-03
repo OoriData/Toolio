@@ -9,5 +9,6 @@ edit_uri: edit/master/doc/
 # https://michaelcurrin.github.io/mkdocs-quickstart/tutorial/advanced/
 nav:
   - Home: index.md
+  - Getting Started: gettingstarted.md
   - Practical notes: pragmatics.md
 #   - Tutorial (WIP): tutorial.md

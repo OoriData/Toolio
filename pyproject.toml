@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/OoriData/Toolio#readme"
+Documentation = "https://OoriData.github.io/Toolio/"
 Issues = "https://github.com/OoriData/Toolio/issues"
 Source = "https://github.com/OoriData/Toolio"
 
