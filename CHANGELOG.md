@@ -7,7 +7,9 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
-## [0.5.0] - 20240902
+## [Unreleased]
+
+## [0.5.0] - 20240903
 
 ### Added
 

@@ -38,19 +38,37 @@ class model_manager(model_client_mixin):
         super().__init__(model_type=self.model.model.model_type, tool_reg=tool_reg, logger=logger,
                          sysmsg_leadin=sysmsg_leadin, remove_used_tools=remove_used_tools)
 
-    async def complete(self, messages, stream=True, json_response=False, json_schema=None,
-                        max_tokens=128, temperature=0.1):
+    async def complete(self, messages, stream=True, json_schema=None, max_tokens=128, temperature=0.1):
+        '''
+        Invoke the LLM with a completion request
+
+        Args:
+            messages (List[str]) - Prompt in the form of list of messages to send ot the LLM for completion.
+                If you have a system prompt, and you are setting up to call tools, it will be updated with
+                the tool spec
+
+            json_schema (dict or str) - JSON schema to be used to structure the generated response.
+                If given a a string, it will be decoded as JSON
+
+            max_tokens (int, optional): Maximum number of tokens to generate
+
+            temperature (float, optional): Affects how likely the LLM is to select statistically less common tokens
+        Yields:
+            str: response chunks
+        '''
         schema = None
         # Regular LLM completion; no steering
         if stream:
             responder = ChatCompletionStreamingResponder(self.model_path, self.model_type)
         else:
             responder = ChatCompletionResponder(self.model_path, self.model_type)
-        if json_response:
-            if json_schema:
+        if json_schema:
+            if isinstance(json_schema, str):
                 schema = json.loads(json_schema)
             else:
-                schema = {'type': 'object'}
+                schema = json_schema
+        else:
+            schema = {'type': 'object'}
 
         # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
         cache_prompt = False
@@ -67,17 +85,23 @@ class model_manager(model_client_mixin):
         Make a chat completion with tools, then continue to iterate completions as long as the LLM
         is using at least one tool, or until max_trips are exhausted
 
-        messages (str) - Prompt in the form of list of messages to send ot the LLM for completion.
-            If you have a system prompt, and you are setting up to call tools, it will be updated with
-            the tool spec
+        Args:
+            messages (str) - Prompt in the form of list of messages to send ot the LLM for completion.
+                If you have a system prompt, and you are setting up to call tools, it will be updated with
+                the tool spec
 
-        toolset (list) - tools specified for this request, presumably a subset of overall tool registry.
-            Each entry is either a tool name, in which the invocation schema is as registered, or a full
-            tool-calling format stanza, in which case, for this request, only the implementaton is used
-            from the initial registry
+            toolset (list) - tools specified for this request, presumably a subset of overall tool registry.
+                Each entry is either a tool name, in which the invocation schema is as registered, or a full
+                tool-calling format stanza, in which case, for this request, only the implementaton is used
+                from the initial registry
 
-        json_schema - JSON schema to be used to guide the final generation step (after all tool-calling, if any)
+            json_schema - JSON schema to be used to guide the final generation step (after all tool-calling, if any)
 
+            max_tokens (int, optional): Maximum number of tokens to generate
+
+            temperature (float, optional): Affects how likely the LLM is to select statistically less common tokens
+        Yields:
+            str: response chunks
         '''
         toolset = toolset or self.toolset
         # schema_str = json.dumps(json_schema)

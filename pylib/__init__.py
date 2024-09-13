@@ -17,5 +17,5 @@ try:
 except ImportError:
     model_manager = None
     import warnings
-    warnings.warn('Unable to import MLX, which requires an Apple Silicon Mac. '
-                  'You will only be able to run pure HTTP client components.')
+    warnings.warn('Unable to import MLX. If you are running this on Apple Silicon you can just `pip install mlx mlx_lm`\n'
+                  'Otherwise you will only be able to run the Toolio HTTP client component.')

@@ -302,3 +302,10 @@ async def extract_content(resp_stream):
             content = chunk['choices'][0]['message'].get('content')
             if content is not None:
                 yield content
+
+
+async def response_text(resp_stream):
+    chunks = []
+    async for chunk in extract_content(resp_stream):
+        chunks.append(chunk)
+    return ''.join(chunks)

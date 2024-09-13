@@ -87,7 +87,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
     "messages": [{"role": "user", "content": "I am thinking of a number between 1 and 10. Guess what it is."}],
     "response_format": {
         "type": "json_object",
-        "schema": "{\"type\": \"object\",\"properties\": {\"number\": {\"type\": \"number\"}}}"
+        "schema": "{\"type\": \"object\",\"properties\": {\"guess\": {\"type\": \"number\"}}}"
     },
     "temperature": 0.1
    }'
@@ -96,7 +96,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 The key here is specification of a JSON schema. The schema is escaped for the command line shell above, so here it is in its regular form:
 
 ```json
-{"type": "object", "properties": {"number": {"type": "number"}}}
+{"type": "object", "properties": {"guess": {"type": "number"}}}
 ```
 
 It looks a bit intimidating, at first, if you're not familiar with [JSON schema](https://json-schema.org/), but they're reasonably easy to learn. [You can follow the primer](https://json-schema.org/learn/getting-started-step-by-step).
@@ -268,7 +268,7 @@ You can also query the server from Python code, using `toolio.client.struct_mlx_
 ```py
 import asyncio
 
-from ogbujipt.llm_wrapper import openai_chat_api, prompt_to_chat
+from ogbujipt.llm_wrapper import prompt_to_chat
 
 from toolio.client import struct_mlx_chat_api
 from toolio.tool import tool, param
