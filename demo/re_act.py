@@ -117,10 +117,3 @@ async def react_demo(tmm):
     print(final)
 
 asyncio.run(react_demo(toolio_mm))
-{
-  "step-type": "action",
-  "action": {
-    "name": "google",
-    "query": "When did France win the World Cup?"
-  }
-}

@@ -302,14 +302,14 @@ You can also, of course, just load the model and run inference on it without bot
 
 ```py
 import asyncio
-from toolio.llm_helper import model_manager, extract_content
+from toolio.llm_helper import model_manager
+from toolio.common import response_text
 
 toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
-    async for chunk in extract_content(tmm.complete(msgs)):
-        print(chunk, end='')
+    print(await response_text(tmm.complete(msgs)))
 
 asyncio.run(say_hello(toolio_mm))
 ```
@@ -332,6 +332,7 @@ toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
+    # This is what response_text() is doing behind the scenes
     async for chunk_struct in tmm.complete(msgs):
         print(chunk_struct)
         break
@@ -392,7 +393,8 @@ As mentioned, you can specify tools and schemata.
 
 ```py
 import asyncio
-from toolio.llm_helper import model_manager, extract_content
+from toolio.llm_helper import model_manager
+from toolio.common import response_text
 
 toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
@@ -402,8 +404,7 @@ async def say_hello(tmm):
     schema = ('{"type": "array", "items":'
               '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}')
     msgs = [{'role': 'user', 'content': prompt.format(json_schema=schema)}]
-    async for chunk in extract_content(tmm.complete(msgs, json_schema=schema)):
-        print(chunk, end='')
+    print(await response_text(tmm.complete(msgs, json_schema=schema)))
 
 asyncio.run(say_hello(toolio_mm))
 ```
@@ -413,7 +414,8 @@ asyncio.run(say_hello(toolio_mm))
 ```py
 import asyncio
 from math import sqrt
-from toolio.llm_helper import model_manager, extract_content
+from toolio.llm_helper import model_manager
+from toolio.common import response_text
 
 SQUARE_ROOT_METADATA = {'name': 'square_root', 'description': 'Get the square root of the given number',
                             'parameters': {'type': 'object', 'properties': {
@@ -426,8 +428,7 @@ toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
 
 async def query_sq_root(tmm):
     msgs = [ {'role': 'user', 'content': 'What is the square root of 256?'} ]
-    async for chunk in extract_content(tmm.complete_with_tools(msgs)):
-        print(chunk, end='')
+    print(await response_text(tmm.complete_with_tools(msgs)))
 
 asyncio.run(query_sq_root(toolio_mm))
 ```
@@ -454,7 +455,8 @@ In order to override the system prompt from code, just set it in the initial cha
 ```py
 import asyncio
 from math import sqrt
-from toolio.llm_helper import model_manager, extract_content
+from toolio.llm_helper import model_manager
+from toolio.common import response_text
 
 SQUARE_ROOT_METADATA = {'name': 'square_root', 'description': 'Get the square root of the given number',
                             'parameters': {'type': 'object', 'properties': {
@@ -474,8 +476,7 @@ async def query_sq_root(tmm):
       {'role': 'system', 'content': SYSPROMPT},
       {'role': 'user', 'content': 'What is the square root of 256?'}
       ]
-    async for chunk in extract_content(tmm.complete_with_tools(msgs)):
-        print(chunk, end='')
+    print(await response_text(tmm.complete_with_tools(msgs)))
 
 asyncio.run(query_sq_root(toolio_mm))
 ```

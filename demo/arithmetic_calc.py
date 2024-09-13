@@ -9,7 +9,8 @@ import asyncio
 from enum import Enum, auto
 
 from toolio.tool import tool, param
-from toolio.llm_helper import model_manager, extract_content
+from toolio.llm_helper import model_manager
+from toolio.common import response_text
 
 
 class arithmetic_op(Enum):
@@ -52,7 +53,7 @@ toolio_mm = model_manager(MLX_MODEL_PATH, tool_reg=[arithmetic_calc])
 PROMPT = 'Solve the following calculation: 4242 * 2424.2'
 async def async_main(tmm):
     msgs = [ {'role': 'user', 'content': PROMPT} ]
-    async for chunk in extract_content(tmm.complete_with_tools(msgs)):
-        print(chunk, end='')
+    rt = await response_text(tmm.complete_with_tools(msgs))
+    print(rt)
 
 asyncio.run(async_main(toolio_mm))

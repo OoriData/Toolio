@@ -9,7 +9,8 @@ what the LLM's inherent tendencies might suggest.
 import asyncio
 
 from toolio.tool import tool
-from toolio.llm_helper import model_manager, extract_content
+from toolio.llm_helper import model_manager
+from toolio.common import response_text
 
 
 @tool('sky_color')
@@ -46,8 +47,7 @@ async def async_main(tmm):
       {'role': 'system', 'content': sysprompt},
       {'role': 'user', 'content': userprompt}
       ]
-    async for chunk in extract_content(tmm.complete_with_tools(msgs)):
-        print(chunk, end='')
-
+    rt = await response_text(tmm.complete_with_tools(msgs))
+    print(rt)
 
 asyncio.run(async_main(toolio_mm))

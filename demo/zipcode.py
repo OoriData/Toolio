@@ -31,9 +31,9 @@ Cuts off for max length, but we've accomplished what we wanted. Well, except tha
 (which shares a zip with Louisville), but that's a nitpick for another project. 😉
 '''
 import asyncio
-from math import sqrt
 from toolio.tool import tool, param
-from toolio.llm_helper import model_manager, extract_content
+from toolio.llm_helper import model_manager
+from toolio.common import response_text
 
 import httpx
 
@@ -60,7 +60,7 @@ toolio_mm = model_manager(MLX_MODEL_PATH, tool_reg=[zip_code_info])
 PROMPT = 'Tell me something about life in zip code 80027'
 async def async_main(tmm):
     msgs = [ {'role': 'user', 'content': PROMPT} ]
-    async for chunk in extract_content(tmm.complete_with_tools(msgs)):
-        print(chunk, end='')
+    rt = await response_text(tmm.complete_with_tools(msgs))
+    print(rt)
 
 asyncio.run(async_main(toolio_mm))
