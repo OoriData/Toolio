@@ -11,32 +11,35 @@ from toolio.common import response_text
 
 SCHEMA = '''\
 {
+  "type": "object",
+  "properties": {
+    "steps": {
+      "type": "array",
+      "items": {
         "type": "object",
         "properties": {
-          "steps": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "explanation": {
-                  "type": "string"
-                },
-                "output": {
-                  "type": "string"
-                }
-              },
-              "required": ["explanation", "output"],
-              "additionalProperties": false
-            }
+          "explanation": {
+            "type": "string"
           },
-          "final_answer": {
+          "output": {
             "type": "string"
           }
         },
-        "required": ["steps", "final_answer"],
+        "required": ["explanation", "output"],
         "additionalProperties": false
+      }
+    },
+    "final_answer": {
+      "type": "string"
+    }
+  },
+  "required": ["steps", "final_answer"]
 }
 '''
+
+# Forbidden by llm-structured-output pending PR: https://github.com/otriscon/llm-structured-output/pull/10
+# ,
+#   "additionalProperties": false
 
 # toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 toolio_mm = model_manager('mlx-community/Mistral-Nemo-Instruct-2407-4bit')

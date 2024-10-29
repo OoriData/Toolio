@@ -83,9 +83,9 @@ You can take the next step by responding according to the following schema:
 '''
 
 def handle_action(text):
+    'Worst tool-caller ever 😅'
     print(f'TOOL CALL: {text}')
     ltext = text.lower()
-    'Worst tool ever 😅'
     if 'which country' in ltext:
         return 'Argentina won the most recent World Cup'
     elif 'draw' in ltext or 'image' in ltext:
