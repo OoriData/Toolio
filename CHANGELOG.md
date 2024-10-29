@@ -7,7 +7,24 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
-## [Unreleased]
+## [0.5.1] - 20241029
+
+### Added
+
+- Demo `demo/re_act.py`
+- `common.response_text()` function to simplify usage
+
+### Fixed
+
+- Usage pattern of KVCache
+
+### Changed
+
+- Decode `json_schema` if given as a string
+
+### Removed
+
+- `json_response` arg to `llm_helper.complete()`; just go by whether json_schema is None
 
 ## [0.5.0] - 20240903
 
