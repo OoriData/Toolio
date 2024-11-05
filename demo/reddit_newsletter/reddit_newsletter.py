@@ -35,17 +35,19 @@ import ssl
 import aiohttp
 import asyncpraw
 
-# from ogbujipt.llm_wrapper import openai_chat_api, prompt_to_chat
+from ogbujipt.llm_wrapper import openai_chat_api, prompt_to_chat
 
 # from toolio.tool import tool
 from toolio.llm_helper import model_manager
 from toolio.common import response_text
 
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Shut up Tokenizers lib warning
+
 # Need this crap to avoid self-signed cert errors (really annoying, BTW!)
 ssl_ctx = ssl.create_default_context(cafile=os.environ.get('CERT_FILE'))
 
 # Requires OPENAI_API_KEY in environment
-# llm_api = openai_chat_api(model='gpt-4o-mini')
+llm_api = openai_chat_api(model='gpt-4o-mini')
 
 MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
 
@@ -129,7 +131,7 @@ Respond using the following schema: {{json_schema}}
 '''
 
 async def async_main(tmm):
-    print('Stage 1: Initial interview (user & agent 1)')
+    print('Stage 1: Initial interview (user & agent 1)', flush=True)
     msgs = [ {'role': 'system', 'content': agent_1_sysprompt},
              {'role': 'user', 'content': userprompt_1} ]
     interview_finished = False
@@ -146,11 +148,11 @@ async def async_main(tmm):
             interview_finished = True
         elif question:
             msgs.append({'role': 'assistant', 'content': question})
-            user_msg = input(question + '    ')
+            user_msg = input(question + '\n')
             print()
             msgs.append({'role': 'user', 'content': user_msg})
 
-    print('Stage 2: Look up subreddits (agents 1 & 2)')
+    print('Stage 2: Look up subreddits (agents 1 & 2)', flush=True)
     with open('subreddits.json') as fp:
         subreddits = json.load(fp)
 
@@ -163,7 +165,7 @@ async def async_main(tmm):
     # print(resp)
 
     subreddits = [ s.replace('/r/', '') for s in subreddits]
-    print('Stage 3: Summarize hottest 10 titles from the listed subreddits')
+    print('Stage 3: Summarize hottest 10 titles from the listed subreddits', flush=True)
     with aiohttp.TCPConnector(ssl=ssl_ctx) as conn:
         session = aiohttp.ClientSession(connector=conn)
 
@@ -192,9 +194,8 @@ async def async_main(tmm):
     msgs = [ {'role': 'user', 'content': uprompt} ]
     resp = await response_text(tmm.complete(msgs, max_tokens=8096))
 
-    # resp = llm_api(messages=msgs)
-    # resp = resp.first_re
-
+    resp = await llm_api(messages=msgs)
+    resp = resp.first_choice_text
 
     print(resp)
 

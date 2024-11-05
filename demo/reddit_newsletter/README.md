@@ -34,10 +34,10 @@ op run --env-file=.env -- python cli.py summarize_hot
 
 # Sample input/session
 
-"Making music"
-"music production"
-"How about production in general, and different production software?"
-"Actually, can we just get on to writing the newsletter?"
+* Making music
+* music production
+* How about production in general, and different production software?
+* Actually, can we just get on to writing the newsletter?
 
 Leads to: ['/r/WeAreTheMusicMakers', '/r/ableton', '/r/musictheory', '/r/edmproduction', '/r/electronicmusic', '/r/hiphopheads', '/r/Metal', '/r/popheads', '/r/guitar', '/r/piano', '/r/bass', '/r/drums']
 
