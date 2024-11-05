@@ -1,0 +1,4 @@
+AsyncPRAW  # Reddit API - https://asyncpraw.readthedocs.io/
+fire  # CLI tool - https://github.com/google/python-fire
+aiohttp
+asyncpraw

@@ -1,3 +1,6 @@
+demo/reddit_newsletter/subreddits_raw_struct.*
+demo/reddit_newsletter/reddit_newsletter_prepatched.py
+
 # Used by Pywright Python Language Server (e.g. Zed editor)
 pyrightconfig.json
 **/.env

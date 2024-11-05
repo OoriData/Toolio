@@ -33,13 +33,10 @@ SCHEMA = '''\
       "type": "string"
     }
   },
-  "required": ["steps", "final_answer"]
+  "required": ["steps", "final_answer"],
+  "additionalProperties": false
 }
 '''
-
-# Forbidden by llm-structured-output pending PR: https://github.com/otriscon/llm-structured-output/pull/10
-# ,
-#   "additionalProperties": false
 
 # toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 toolio_mm = model_manager('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
