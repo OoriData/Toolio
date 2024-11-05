@@ -24,7 +24,7 @@ Following assumes using 1passwd for secrets
 ```sh
 pip install -r requirements.txt
 
-op run --env-file=.env -- python cli.py summarize_host
+op run --env-file=.env -- python reddit_newsletter.py
 '''
 import os
 import json
@@ -73,8 +73,7 @@ AGENT_1_SCHEMA = '''\
         "type": "string"
       }
     }
-  },
-  "additionalProperties": false
+  }
 }
 ''' #  noqa E501
 

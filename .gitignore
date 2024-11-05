@@ -174,3 +174,4 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 demo/docker_compose.yaml
+demo/reddit_newsletter/cacert.pem
