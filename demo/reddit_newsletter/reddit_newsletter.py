@@ -133,18 +133,24 @@ Respond using the following schema: {{json_schema}}
 
 
 async def console_throbber(frame_time: float=0.15):
-    '''
-    Prints a spinning throbber to console with specified frame time
-    '''
+    'Prints a spinning throbber to console with specified frame time'
     THROBBER_GFX = ["◢", "◣", "◤", "◥"]
-
     while True:
         for frame in THROBBER_GFX:
             print(f" [{frame}]", end="\r", flush=True)
             await asyncio.sleep(frame_time)
 
 
-async def gather_reddit(subreddits):
+async def gather_reddit(topics, all_subreddits, tmm):
+    # Type maniac linters get on my nerves 🤬
+    msgs = [ {'role': 'system', 'content': agent_2_sysprompt},
+             {'role': 'user', 'content': agent_2_uprompt.format(topics='\n* '.join(topics), subreddits=all_subreddits)} ]  # pyright: ignore[reportCallIssue, reportArgumentType] noqa: 501
+    resp = await response_text(tmm.complete(msgs, json_schema=AGENT_2_SCHEMA, max_tokens=2048))
+    subreddits = json.loads(resp)
+    subreddits = subreddits[:MAX_SUBREDDITS]
+    # print(resp)
+
+    subreddits = [ s.replace('/r/', '') for s in subreddits]
     with aiohttp.TCPConnector(ssl=ssl_ctx) as conn:
         session = aiohttp.ClientSession(connector=conn)
 
@@ -197,18 +203,9 @@ async def async_main(tmm):
     with open('subreddits.json') as fp:
         subreddits = json.load(fp)
 
-    # Type maniac linters get on my nerves 🤬
-    msgs = [ {'role': 'system', 'content': agent_2_sysprompt},
-             {'role': 'user', 'content': agent_2_uprompt.format(topics='\n* '.join(ready), subreddits=subreddits)} ]  # pyright: ignore[reportCallIssue, reportArgumentType] noqa: 501
-    resp = await response_text(tmm.complete(msgs, json_schema=AGENT_2_SCHEMA, max_tokens=2048))
-    subreddits = json.loads(resp)
-    subreddits = subreddits[:MAX_SUBREDDITS]
-    # print(resp)
-
-    subreddits = [ s.replace('/r/', '') for s in subreddits]
     done, _ = await asyncio.wait((
         asyncio.create_task(console_throbber()),
-        asyncio.create_task(gather_reddit(subreddits))), return_when=asyncio.FIRST_COMPLETED)
+        asyncio.create_task(gather_reddit(ready, subreddits, tmm))), return_when=asyncio.FIRST_COMPLETED)
 
     posts = list(done)[0].result()
     titles = '\n*  '.join([post.title for post in posts]).strip()
