@@ -2,11 +2,22 @@ Reddit-sourced agent-guided newsletter generator (`demo/reddit_newsletter`)
 
 # Basic flow
 
-Agent 1: Asks user main topic of interest, with follow-ups to narrow down
+Agent 0: The human user
 
-Agent 2: Checks that the post contains no anti-social material
+Agent 1 (local LLM, e.g. Mistral Nemo): Interviews the user turn by turn to build an understanding of a topic of interest for the newsletter, with follow-ups to narrow down the focus
 
-Agent 1: confirms with the user (who is in effect agent 3) before posting
+Agent 2 (Can be the same local LLM as Agent 1, e.g. Mistral Nemo): Uses the topics the user raised to select a list of relevant subreddits
+
+Agent 3 (Code tool): Reads the hottest, most recent 10 posts from each of the selected subreddits
+
+Agent 4 (OpenAI GPT 4o-mini): Takes the raw posts from Agent 3 and generates a full newsletter
+
+Agent 5 (different local LLM such as LlamaGuard): Checks that the resulting newsletter contains no anti-social material (remember the source is Reddit)
+
+Agent 6 (Code tool): publishes the newsletter
+
+
+Agent 6 (Code tool): confirms with the user (who is in effect agent 3) before posting
 
 Additions?
 
@@ -40,6 +51,13 @@ op run --env-file=.env -- python cli.py summarize_hot
 * Actually, can we just get on to writing the newsletter?
 
 Leads to: ['/r/WeAreTheMusicMakers', '/r/ableton', '/r/musictheory', '/r/edmproduction', '/r/electronicmusic', '/r/hiphopheads', '/r/Metal', '/r/popheads', '/r/guitar', '/r/piano', '/r/bass', '/r/drums']
+
+
+Cooking
+Asian cuisine
+Vietnam and Cambodia
+More a genre: street food
+I think that's enough. Let's write!
 
 # Related intrest
 

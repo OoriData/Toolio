@@ -35,6 +35,7 @@ import ssl
 import aiohttp
 import asyncpraw
 
+from utiloori.ansi_color import ansi_color
 from ogbujipt.llm_wrapper import openai_chat_api, prompt_to_chat
 
 # from toolio.tool import tool
@@ -130,6 +131,46 @@ Select which of the following subreddits might be useful for research.
 Respond using the following schema: {{json_schema}}
 '''
 
+
+async def console_throbber(frame_time: float=0.15):
+    '''
+    Prints a spinning throbber to console with specified frame time
+    '''
+    THROBBER_GFX = ["◢", "◣", "◤", "◥"]
+
+    while True:
+        for frame in THROBBER_GFX:
+            print(f" [{frame}]", end="\r", flush=True)
+            await asyncio.sleep(frame_time)
+
+
+async def gather_reddit(subreddits):
+    with aiohttp.TCPConnector(ssl=ssl_ctx) as conn:
+        session = aiohttp.ClientSession(connector=conn)
+
+        reddit = asyncpraw.Reddit(
+            client_id=os.environ.get('REDDIT_CLIENT_ID'),
+            client_secret=os.environ.get('REDDIT_CLIENT_SECRET'),
+            user_agent=USER_AGENT,
+            requestor_kwargs={'session': session},  # Custom HTTP session
+        )
+
+        posts = []
+        for subreddit in subreddits:
+            subreddit_api = await reddit.subreddit(subreddit, fetch=True)
+            added_posts = []
+            async for submission in subreddit_api.hot(limit=15):  # , time_filter="day"
+                # print(submission.title)
+                if submission.stickied:  # Pinned post
+                    continue
+                added_posts.append(submission)
+                await asyncio.sleep(0.1)
+                # post.id  # id
+                # post.selftext  # body
+            posts.extend(added_posts[:10])
+    return posts
+
+
 async def async_main(tmm):
     print('Stage 1: Initial interview (user & agent 1)', flush=True)
     msgs = [ {'role': 'system', 'content': agent_1_sysprompt},
@@ -148,7 +189,7 @@ async def async_main(tmm):
             interview_finished = True
         elif question:
             msgs.append({'role': 'assistant', 'content': question})
-            user_msg = input(question + '\n')
+            user_msg = input(ansi_color(question, 'cyan') + '\n')
             print()
             msgs.append({'role': 'user', 'content': user_msg})
 
@@ -165,34 +206,21 @@ async def async_main(tmm):
     # print(resp)
 
     subreddits = [ s.replace('/r/', '') for s in subreddits]
+    done, _ = await asyncio.wait((
+        asyncio.create_task(console_throbber()),
+        asyncio.create_task(gather_reddit(subreddits))), return_when=asyncio.FIRST_COMPLETED)
+
+    posts = list(done)[0].result()
+    titles = '\n*  '.join([post.title for post in posts]).strip()
+
     print('Stage 3: Summarize hottest 10 titles from the listed subreddits', flush=True)
-    with aiohttp.TCPConnector(ssl=ssl_ctx) as conn:
-        session = aiohttp.ClientSession(connector=conn)
-
-        reddit = asyncpraw.Reddit(
-            client_id=os.environ.get('REDDIT_CLIENT_ID'),
-            client_secret=os.environ.get('REDDIT_CLIENT_SECRET'),
-            user_agent=USER_AGENT,
-            requestor_kwargs={'session': session},  # Custom HTTP session
-        )
-
-        posts = []
-        for subreddit in subreddits:
-            subreddit_api = await reddit.subreddit(subreddit, fetch=True)
-            async for submission in subreddit_api.hot(limit=20):  # , time_filter="day"
-                # print(submission.title)
-                if submission.stickied:  # Pinned post
-                    continue
-                posts.append(submission)
-                # post.id  # id
-                # post.selftext  # body
-
-    titles = [post.title for post in posts]
-
-    titles = '\n*  '.join(titles).strip()
     uprompt = AGENT_3_UPROMPT.format(subreddits=subreddits, titles=titles)
     msgs = [ {'role': 'user', 'content': uprompt} ]
-    resp = await response_text(tmm.complete(msgs, max_tokens=8096))
+    done, _ = await asyncio.wait((
+        asyncio.create_task(console_throbber()),
+        asyncio.create_task(response_text(tmm.complete(msgs, max_tokens=4096)))), return_when=asyncio.FIRST_COMPLETED)
+
+    resp = list(done)[0].result()
 
     resp = await llm_api(messages=msgs)
     resp = resp.first_choice_text
