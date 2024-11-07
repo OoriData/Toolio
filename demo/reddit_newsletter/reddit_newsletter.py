@@ -119,6 +119,7 @@ The source subreddits are: {subreddits}
 
 Based on this, please provide a nicely-written newletter summary of the interesting topics of the day across these
 forums. Try to make it more than just a random list of topics, and more a readable take on the latest points of intrest.
+Where possible, cite your sources using the Reddit links.
 '''
 
 toolio_mm = model_manager(MLX_MODEL_PATH)
