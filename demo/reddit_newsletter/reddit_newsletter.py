@@ -167,7 +167,7 @@ async def console_throbber(frame_time: float=0.15):
             await asyncio.sleep(frame_time)
 
 
-@job_memory.cache(cache_validation_callback=CACHE_AGING)
+# @job_memory.cache(cache_validation_callback=CACHE_AGING)
 async def gather_reddit(topics, all_subreddits):
     # Type maniac linters get on my nerves 🤬
     msgs = [ {'role': 'system', 'content': agent_2_sysprompt},
