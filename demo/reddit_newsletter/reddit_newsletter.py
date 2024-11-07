@@ -31,9 +31,13 @@ import json
 import asyncio
 import warnings
 import ssl
+import webbrowser
+import tempfile
 
 import aiohttp
 import asyncpraw
+import markdown
+from joblib import Memory, expires_after
 
 from utiloori.ansi_color import ansi_color
 from ogbujipt.llm_wrapper import openai_chat_api, prompt_to_chat
@@ -44,11 +48,33 @@ from toolio.common import response_text
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Shut up Tokenizers lib warning
 
+# Set up cache
+CACHE_AGING = expires_after(hours=1)  # Web cache ages out after an hour
+CACHEDIR = './.cache'
+job_memory = Memory(CACHEDIR, verbose=0)
+
 # Need this crap to avoid self-signed cert errors (really annoying, BTW!)
 ssl_ctx = ssl.create_default_context(cafile=os.environ.get('CERT_FILE'))
 
 # Requires OPENAI_API_KEY in environment
 llm_api = openai_chat_api(model='gpt-4o-mini')
+
+
+def display_html_string(html=None, md=None):
+    '''
+    Displays the given HTML string in a web browser.
+
+    Args:
+        html_string: The HTML string to display.
+    '''
+    if not any((html, md)):
+        raise ValueError('Requires either an HTML or Markdown string')
+    if md:
+        html = markdown.markdown(md)
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as f:
+        f.write(html.encode('utf-8'))  # reportOptionalMemberAccess
+        webbrowser.open('file://' + f.name)
+
 
 MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
 
@@ -141,11 +167,12 @@ async def console_throbber(frame_time: float=0.15):
             await asyncio.sleep(frame_time)
 
 
-async def gather_reddit(topics, all_subreddits, tmm):
+@job_memory.cache(cache_validation_callback=CACHE_AGING)
+async def gather_reddit(topics, all_subreddits):
     # Type maniac linters get on my nerves 🤬
     msgs = [ {'role': 'system', 'content': agent_2_sysprompt},
              {'role': 'user', 'content': agent_2_uprompt.format(topics='\n* '.join(topics), subreddits=all_subreddits)} ]  # pyright: ignore[reportCallIssue, reportArgumentType] noqa: 501
-    resp = await response_text(tmm.complete(msgs, json_schema=AGENT_2_SCHEMA, max_tokens=2048))
+    resp = await response_text(toolio_mm.complete(msgs, json_schema=AGENT_2_SCHEMA, max_tokens=2048))
     subreddits = json.loads(resp)
     subreddits = subreddits[:MAX_SUBREDDITS]
     # print(resp)
@@ -177,14 +204,14 @@ async def gather_reddit(topics, all_subreddits, tmm):
     return posts
 
 
-async def async_main(tmm):
+async def async_main():
     print('Stage 1: Initial interview (user & agent 1)', flush=True)
     msgs = [ {'role': 'system', 'content': agent_1_sysprompt},
              {'role': 'user', 'content': userprompt_1} ]
     interview_finished = False
     ready = None
     while not interview_finished:
-        resp = await response_text(tmm.complete(msgs, json_schema=AGENT_1_SCHEMA, max_tokens=2048))
+        resp = await response_text(toolio_mm.complete(msgs, json_schema=AGENT_1_SCHEMA, max_tokens=2048))
         resp = json.loads(resp)
         # print(resp)
         question = resp.get('question')
@@ -205,7 +232,7 @@ async def async_main(tmm):
 
     done, _ = await asyncio.wait((
         asyncio.create_task(console_throbber()),
-        asyncio.create_task(gather_reddit(ready, subreddits, tmm))), return_when=asyncio.FIRST_COMPLETED)
+        asyncio.create_task(gather_reddit(ready, subreddits))), return_when=asyncio.FIRST_COMPLETED)
 
     posts = list(done)[0].result()
     titles = '\n*  '.join([post.title for post in posts]).strip()
@@ -215,7 +242,8 @@ async def async_main(tmm):
     msgs = [ {'role': 'user', 'content': uprompt} ]
     done, _ = await asyncio.wait((
         asyncio.create_task(console_throbber()),
-        asyncio.create_task(response_text(tmm.complete(msgs, max_tokens=4096)))), return_when=asyncio.FIRST_COMPLETED)
+        asyncio.create_task(response_text(toolio_mm.complete(msgs, max_tokens=4096)))),
+            return_when=asyncio.FIRST_COMPLETED)
 
     resp = list(done)[0].result()
 
@@ -223,5 +251,7 @@ async def async_main(tmm):
     resp = resp.first_choice_text
 
     print(resp)
+    display_html_string(md=resp)
 
-asyncio.run(async_main(toolio_mm))
+
+asyncio.run(async_main())
