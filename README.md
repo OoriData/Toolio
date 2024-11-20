@@ -114,12 +114,14 @@ This time you'll just get the straightforward response text, e.g. "Sure, I'll gu
 Here is an example using JSON schema constraint to extract structured data from an unstructured sentence.
 
 ```sh
-export LMPROMPT='Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}'
+export LMPROMPT='Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#'
 export LMSCHEMA='{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}'
 toolio_request --apibase="http://localhost:8000" --prompt=$LMPROMPT --schema=$LMSCHEMA
 ```
 
 (…and yes, in practice a smaller, specialized entity extraction model might be a better option for a case this simple)
+
+Notice the `#!JSON_SCHEMA!#` cutout, which Toolio replaces for you with the actual schema you've provided.
 
 With any decent LLM you should get the following **and no extraneous text cluttering things up!**
 
@@ -130,7 +132,7 @@ With any decent LLM you should get the following **and no extraneous text clutte
 Or if you have the prompt or schema written to files:
 
 ```sh
-echo 'Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}' > /tmp/llmprompt.txt
+echo 'Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#' > /tmp/llmprompt.txt
 echo '{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}' > /tmp/countries.schema.json
 toolio_request --apibase="http://localhost:8000" --prompt-file=/tmp/llmprompt.txt --schema-file=/tmp/countries.schema.json
 ```
@@ -400,11 +402,10 @@ toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
 async def say_hello(tmm):
     prompt = ('Which countries are mentioned in the sentence \'Adamma went home to Nigeria for the hols\'?'
-              'Your answer should be only JSON, according to this schema: {json_schema}')
+              'Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#')
     schema = ('{"type": "array", "items":'
               '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}')
-    msgs = [{'role': 'user', 'content': prompt.format(json_schema=schema)}]
-    print(await response_text(tmm.complete(msgs, json_schema=schema)))
+    print(await response_text(tmm.complete([{'role': 'user', 'content': prompt}], json_schema=schema)))
 
 asyncio.run(say_hello(toolio_mm))
 ```

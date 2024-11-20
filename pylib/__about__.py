@@ -3,4 +3,4 @@
 # SPDX-License-Identifier: Apache-2.0
 # toolio.about
 
-__version__ = '0.5.1'
+__version__ = '0.5.2'

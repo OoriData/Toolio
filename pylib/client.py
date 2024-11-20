@@ -23,7 +23,7 @@ from ogbujipt import config
 from ogbujipt.llm_wrapper import llm_response, response_type
 
 from toolio.common import TOOLIO_MODEL_TYPE_FIELD, TOOL_CHOICE_AUTO, TOOL_CHOICE_NONE, FLAGS_LOOKUP
-from toolio.common import DEFAULT_FLAGS as DEFAULT_MODEL_FLAGS
+from toolio.common import DEFAULT_JSON_SCHEMA_CUTOUT, DEFAULT_FLAGS as DEFAULT_MODEL_FLAGS
 from toolio.common import model_client_mixin
 from toolio.prompt_helper import set_tool_response
 
@@ -50,7 +50,8 @@ class struct_mlx_chat_api(model_client_mixin):
     >>> resp = asyncio.run(llm_api(prompt_to_chat('Knock knock!')))
     >>> resp.first_choice_text
     '''
-    def __init__(self, base_url=None, default_schema=None, flags=DEFAULT_FLAGS, tool_reg=None, logger=logging, **kwargs):
+    def __init__(self, base_url=None, default_schema=None, flags=DEFAULT_FLAGS, tool_reg=None, logger=logging,
+                 json_schema_cutout=DEFAULT_JSON_SCHEMA_CUTOUT, **kwargs):
         '''
         Args:
             base_url (str, optional): Base URL of the API endpoint
@@ -66,10 +67,13 @@ class struct_mlx_chat_api(model_client_mixin):
 
             logger - logger object, handy for tracing operations
 
+            json_schema_cutout - Prompt text which should be replaced by actual JSON schema
+
             kwargs (dict, optional): Extra parameters for the API or for the model host
         '''
         self.parameters = config.attr_dict(kwargs)
         self.default_schema = default_schema
+        self.json_schema_cutout = json_schema_cutout
         self.base_url = base_url
         if self.base_url:
             # If the user includes the API version in the base, don't add it again
@@ -87,7 +91,7 @@ class struct_mlx_chat_api(model_client_mixin):
         super().__init__(tool_reg=tool_reg, logger=logger)
 
     async def __call__(self, messages, req='chat/completions', json_schema=None, toolset=None, sysprompt=None,
-                       tool_choice=TOOL_CHOICE_AUTO, apikey=None, max_trips=3, trip_timeout=90.0, **kwargs):
+                       tool_choice=TOOL_CHOICE_AUTO, apikey=None, max_trips=3, trip_timeout=90.0, json_schema_cutout=None, **kwargs):
         '''
         Invoke the LLM with a completion request
 
@@ -109,6 +113,9 @@ class struct_mlx_chat_api(model_client_mixin):
 
             trip_timeout (float) - timeout (in seconds) per LLM API request trip; defaults to 90s
 
+            json_schema_cutout (str) - Prompt text which should be replaced by actual JSON schema;
+                overrides instance default
+
             kwargs (dict, optional): Extra parameters to pass to the model via API.
                 See Completions.create in OpenAI API, but in short, these:
                 temperature, max_tokens, best_of, echo, frequency_penalty, logit_bias, logprobs,
@@ -119,6 +126,7 @@ class struct_mlx_chat_api(model_client_mixin):
         # Uncomment for test case construction
         # print('MESSAGES', messages, '\n', 'json_schema', json_schema, '\n', 'TOOLS', toolset)
         toolset = toolset or self.toolset
+        json_schema_cutout = json_schema_cutout or self.json_schema_cutout
         req = req.strip('/')
         req_tools = self._resolve_tools(toolset)
         req_tool_spec = [ s for f, s in req_tools.values() ]
@@ -129,12 +137,20 @@ class struct_mlx_chat_api(model_client_mixin):
         schema = json_schema or self.default_schema
         schema_str = json.dumps(schema)
 
-        # Replace {json_schema} references with the schema
+        # Replace JSON schema cutout references with the actual schema
+        cutout_replaced = False
         for m in messages:
-            # Don't use actual string formatting for now, because user might have other uses of curly braces
-            # Yes, this introduces the problem of escaping without depth, so much pondering required
-            # Perhaps make the replacement string configurable
-            m['content'] = m['content'].replace('{json_schema}', schema_str)
+            # XXX: content should always be in m, though. Validate?
+            if 'content' in m and json_schema_cutout in m['content']:
+                m['content'] = m['content'].replace(json_schema_cutout, schema_str)
+                cutout_replaced = True
+
+        if not cutout_replaced:
+            warnings.warn('JSON Schema provided, but no place found to replace it.'
+                          ' Will be tacked on the end of the first user message', stacklevel=2)
+            target_msg = next(m for m in messages if m['role'] == 'user')
+            target_msg['content'] += '\nRespond in JSON according to this schema: ' + schema_str
+
         req_data = {'messages': messages, **kwargs}
         if toolset:
             req_data['tool_choice'] = tool_choice

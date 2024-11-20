@@ -29,6 +29,8 @@ from toolio.util import check_callable
 TOOL_CHOICE_AUTO = 'auto'
 TOOL_CHOICE_NONE = 'none'
 
+DEFAULT_JSON_SCHEMA_CUTOUT = '#!JSON_SCHEMA!#'
+
 class model_flag(Flag):
     NO_SYSTEM_ROLE = auto()  # e.g. Gemma blows up if you use a system message role
     USER_ASSISTANT_ALT = auto()  # Model requires alternation of message roles user/assistant only
@@ -46,6 +48,7 @@ FLAGS_LOOKUP = {
     'gemma2': model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT,
     'mixtral': model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT,
     'mistral': model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT,
+    'qwen2': model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT,
 }
 
 TOOLIO_MODEL_TYPE_FIELD = 'toolio.model_type'
@@ -113,7 +116,8 @@ class model_client_mixin(prompt_handler):
     '''
     Encapsulates tool registry. Remember that tool-calling occurs on the client side.
     '''
-    def __init__(self, model_type=None, logger=None, sysmsg_leadin='', tool_reg=None, remove_used_tools=True):
+    def __init__(self, model_type=None, logger=None, sysmsg_leadin='', tool_reg=None, remove_used_tools=True,
+                 json_schema_cutout=DEFAULT_JSON_SCHEMA_CUTOUT):
         '''
         Args:
 

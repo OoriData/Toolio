@@ -5,8 +5,6 @@ python test/quick_check.py mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
 import sys
 import asyncio
 
-import click
-
 # from toolio.http_schematics import V1Function
 from toolio.llm_helper import model_manager, extract_content
 
@@ -22,10 +20,10 @@ async def amain(mm):
     print('\n', '='*40, 'Country extraction')
 
     prompt = ('Which countries are mentioned in the sentence \'Adamma went home to Nigeria for the hols\'?'
-              'Your answer should be only JSON, according to this schema: {json_schema}')
+              'Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#')
     schema = ('{"type": "array", "items":'
               '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}')
-    msgs = [{'role': 'user', 'content': prompt.format(json_schema=schema)}]
+    msgs = [{'role': 'user', 'content': prompt}]
     async for chunk in extract_content(mm.complete(msgs, json_schema=schema)):
         print(chunk, end='')
 

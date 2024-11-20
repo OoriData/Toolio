@@ -79,7 +79,7 @@ Here is the user question:
 
 You can take the next step by responding according to the following schema:
 
-{json_schema}
+#!JSON_SCHEMA!#
 '''
 
 def handle_action(text):
@@ -94,7 +94,7 @@ def handle_action(text):
         raise RuntimeError('Tool call unhandled')
 
 async def react_demo(tmm):
-    prompt = MAIN_PROMPT.format(json_schema=SCHEMA, available_tools=AVAILABLE_TOOLS, user_question=USER_QUESTION)
+    prompt = MAIN_PROMPT.format(available_tools=AVAILABLE_TOOLS, user_question=USER_QUESTION)
     done = False
     msgs = [{'role': 'user', 'content': prompt}]
     while not done:

@@ -132,7 +132,7 @@ create a newsletter post. Your responses are always in JSON, either using the
 `question` object key to ask the user an inital or follow-up question, or when you think you have
 a reasonable amount of information, and after no more than a few turns, you will respond using
 the `ready` object key, with a list of topics in a form that can be looked up as simple topic tags.
-Here is the schema for you to use: {json_schema}
+Here is the schema for you to use: #!JSON_SCHEMA!#
 '''
 userprompt_1 = 'Hi! I\'d like to create a newsletter post'
 
@@ -155,7 +155,7 @@ Select which of the following subreddits might be useful for research.
 {subreddits}
 ### END SUBREDDITS
 
-Respond using the following schema: {{json_schema}}
+Respond using the following schema: #!JSON_SCHEMA!#
 '''
 
 

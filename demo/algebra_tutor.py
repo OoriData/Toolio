@@ -42,7 +42,7 @@ SCHEMA = '''\
 toolio_mm = model_manager('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
 
 async def tutor_main(tmm):
-    prompt = ('solve 8x + 31 = 2. Your answer should be only JSON, according to this schema: {json_schema}')
+    prompt = ('solve 8x + 31 = 2. Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#')
     msgs = [{'role': 'user', 'content': prompt.format(json_schema=SCHEMA)}]
     rt = await response_text(tmm.complete(msgs, json_schema=SCHEMA, max_tokens=512))
     print(rt)

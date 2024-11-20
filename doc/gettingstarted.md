@@ -53,10 +53,12 @@ toolio_request --apibase="http://localhost:8000" --prompt="I am thinking of a nu
 Constrain the LLM's output using a JSON schema:
 
 ```sh
-export LMPROMPT='Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}'
+export LMPROMPT='Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#'
 export LMSCHEMA='{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}'
 toolio_request --apibase="http://localhost:8000" --prompt=$LMPROMPT --schema=$LMSCHEMA
 ```
+
+Notice the `#!JSON_SCHEMA!#` cutout, which Toolio replaces for you with the actual schema you've provided.
 
 ### 4. Tool Calling
 

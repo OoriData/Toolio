@@ -37,7 +37,7 @@ async def test_number_guess(httpserver, session_cls):
 async def test_naija_extract(httpserver, session_cls):
     naija_extract_ht = session_cls(
         label='Naija extract (Hermes theta)',
-        req_messages=[{'role': 'user', 'content': 'Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: {json_schema}'}],
+        req_messages=[{'role': 'user', 'content': 'Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#'}],
         req_schema={'type': 'array', 'items': {'type': 'object', 'properties': {'name': {'type': 'string'}, 'continent': {'type': 'string'}}}},
         resp_text='[{"name": "Nigeria", "continent": "Africa"}]',
         resp_json={'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': '[{"name": "Nigeria", "continent": "Africa"}]'}, 'finish_reason': 'stop'}], 'usage': {'completion_tokens': 15, 'prompt_tokens': 74, 'total_tokens': 89}, 'object': 'chat.completion', 'id': 'chatcmpl-5936244368_1719844279', 'created': 1719844279, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'},
