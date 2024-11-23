@@ -13,6 +13,8 @@ import warnings
 from pathlib import Path  # noqa: E402
 from enum import Flag, auto
 
+from amara3 import iri
+
 # import mlx.core as mx
 # from mlx_lm.models import (gemma, gemma2, llama, phi, qwen, su_rope, minicpm, phi3, qwen2, gpt2,
 #                            mixtral, phi3small, qwen2_moe, cohere, gpt_bigcode, phixtral,
@@ -52,6 +54,23 @@ FLAGS_LOOKUP = {
 }
 
 TOOLIO_MODEL_TYPE_FIELD = 'toolio.model_type'
+
+
+def load_or_connect(ref: str):
+    '''
+    Sonvenience function to either load a module from a file or HuggingFace path,
+    or connect to a Toolio server, based on checking the provided reference string
+
+    Parameters:
+        ref (str) - file path, HuggingFace path or Toolio server URL
+    '''
+    if iri.matches_uri_syntax(ref):
+        from toolio.client import struct_mlx_chat_api, response_type, cmdline_tools_struct
+        llm = struct_mlx_chat_api(base_url=ref)
+    else:
+        from toolio.llm_helper import model_manager
+        llm = model_manager(ref)
+    return llm
 
 
 # FIXME: Replace with utiloori.filepath.obj_file_path_parent

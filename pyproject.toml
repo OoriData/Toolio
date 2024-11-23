@@ -22,10 +22,11 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
 ]
 dependencies = [
-  # If not on Apple Silicon Mac, don't try to install MLX. There will be a warning on import.
-  # See https://hatch.pypa.io/dev/config/dependency/#environment-markers
-  "mlx>=0.19.1; platform_version=='arm64'",
-  "mlx_lm>=0.19.2; platform_version=='arm64'",
+  # MLX libraries are only installed on Apple Silicon Macs running macOS 13.5+ with Python 3.8+, as requied
+  # platform_release >= '22.6.0': Corresponds to macOS 13.5 or later
+  # FOr more on environment markers see: https://hatch.pypa.io/dev/config/dependency/#environment-markers
+  "mlx>=0.19.1; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8' and platform_release >= '22.6.0'",
+  "mlx_lm>=0.19.2; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8' and platform_release >= '22.6.0'",
   # "mlx>=0.16.0;platform_version=='arm64'",
   # "mlx_lm>=0.16.0;platform_version=='arm64'",
   "llm-structured-output>=0.0.19",
