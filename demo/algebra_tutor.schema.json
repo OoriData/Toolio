@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Schema for breaking down algebraic problem-solving steps with detailed explanations",
+  "properties": {
+    "steps": {
+      "type": "array",
+      "description": "Ordered list of problem-solving steps",
+      "items": {
+        "type": "object",
+        "description": "Individual problem-solving step with explanation and output",
+        "properties": {
+          "explanation": {
+            "type": "string",
+            "description": "Detailed description of the mathematical reasoning or method used in this step",
+            "examples": [
+              "Isolate the variable by subtracting 5 from both sides of the equation",
+              "Multiply both sides by the reciprocal to solve for x"
+            ]
+          },
+          "output": {
+            "type": "string", 
+            "description": "The mathematical result or state of the equation after applying this step",
+            "examples": [
+              "x - 5 = 10",
+              "x = 15"
+            ]
+          }
+        },
+        "required": ["explanation", "output"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "final_answer": {
+      "type": "string",
+      "description": "The conclusive solution to the algebraic problem",
+      "examples": [
+        "x = 15",
+        "y = 7"
+      ]
+    }
+  },
+  "required": ["steps", "final_answer"],
+  "additionalProperties": false
+}

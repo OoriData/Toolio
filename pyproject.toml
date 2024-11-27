@@ -38,6 +38,19 @@ dependencies = [
   # "amara3.iri"
 ]
 
+[project.optional-dependencies]
+tools = [
+  # Extra requirements for the built-in slate of tools
+  "google-re2"
+]
+dev = [
+  # Extra requirements for project contributors & other developers
+  "build",
+  "pytest-asyncio",
+  "pytest-httpserver",
+  # "pytest-mock"
+]
+
 [project.urls]
 Documentation = "https://OoriData.github.io/Toolio/"
 Issues = "https://github.com/OoriData/Toolio/issues"

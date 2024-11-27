@@ -82,6 +82,7 @@ You can take the next step by responding according to the following schema:
 #!JSON_SCHEMA!#
 '''
 
+
 def handle_action(text):
     'Worst tool-caller ever 😅'
     print(f'TOOL CALL: {text}')
@@ -92,6 +93,7 @@ def handle_action(text):
         return 'Image available at https://gimmemyjpg.net'
     else:
         raise RuntimeError('Tool call unhandled')
+
 
 async def react_demo(tmm):
     prompt = MAIN_PROMPT.format(available_tools=AVAILABLE_TOOLS, user_question=USER_QUESTION)

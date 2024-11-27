@@ -7,6 +7,16 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
+## [Unreleased]
+
+### Added
+
+- `toolio.common.load_or_connect` convenience function
+
+### Changed
+
+- Make the `{json_schema}` template "cutout" configurable, and change the default
+
 ## [0.5.1] - 20241029
 
 ### Added
