@@ -55,6 +55,20 @@ FLAGS_LOOKUP = {
 
 TOOLIO_MODEL_TYPE_FIELD = 'toolio.model_type'
 
+TOOLIO_BYPASS_TOOL_NAME = 'toolio.bypass'
+TOOLIO_BYPASS_TOOL = {
+    'name': TOOLIO_BYPASS_TOOL_NAME,
+    'description': 'Call this tool to indicate that no other provided tool is useful for responding to the user',
+    'parameters': {'type': 'object', 'properties':
+                    {'response': {'type': 'string', 'description': 'Your normal response to the user'}}}}
+
+TOOLIO_FINAL_RESPONSE_TOOL_NAME = 'toolio.final_response'
+TOOLIO_FINAL_RESPONSE_TOOL = {
+    'name': TOOLIO_FINAL_RESPONSE_TOOL_NAME,
+    'description': 'Give a final response once you have all the info you need, and have completed reasoning.',
+    'parameters': {'type': 'object', 'properties':
+                    {'response': {'type': 'string', 'description': 'Message text for the user'}}}}
+
 
 def load_or_connect(ref: str):
     '''
@@ -164,7 +178,6 @@ class model_client_mixin(prompt_handler):
             else:
                 self.register_tool(toolspec)
         # Low enough level that we'll just let the user manipulate the object to change this
-        self.bypass_tool_name = 'toolio_bypass'
 
     def register_tool(self, funcpath_or_obj, schema=None):
         '''
@@ -247,16 +260,17 @@ class model_client_mixin(prompt_handler):
         opts to give
         '''
         for tc in response['choices'][0].get('message', {}).get('tool_calls'):
-            if tc['function']['name'] == self.bypass_tool_name:
+            if tc['function']['name'] in (TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME):
                 args = json.loads(tc['function']['arguments'])
-                bypass_resp_text = args['response']
-                self.logger.debug(f'LLM chose to bypass function-calling witht he following response: {bypass_resp_text}')
+                direct_resp_text = args['response']
+                self.logger.debug(f'LLM chose to bypass function-calling witht he following response: {direct_resp_text}')
                 # Reconstruct an OpenAI-style response
                 choice = response['choices'][0]
                 full_resp = {
-                    'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': bypass_resp_text},
+                    'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': direct_resp_text},
                                  'finish_reason': choice['finish_reason']}],
-                                 # Usage is going to be based on the tool-call original, but we probably want that, because it was what's actually consumed
+                                 # Usage is going to be based on the tool-call original, but we probably want that,
+                                 # because it was what's actually consumed
                                  'usage': response['usage'], 'object': response['object'], 'id': response['id'],
                                  'created': response['created'], 'model': response['model'], 'toolio.model_type':
                                  response['toolio.model_type']}
