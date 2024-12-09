@@ -6,12 +6,15 @@
 import json
 import logging
 
-from toolio.common import TOOL_CHOICE_AUTO, model_client_mixin
+from toolio.common import TOOL_CHOICE_AUTO, model_client_mixin, TOOLIO_BYPASS_TOOL, TOOLIO_FINAL_RESPONSE_TOOL
 from toolio.common import extract_content  # Just really for legacy import patterns # noqa: F401
 from toolio.schema_helper import Model
-from toolio.prompt_helper import set_tool_response, process_tools_for_sysmsg
+from toolio.prompt_helper import set_tool_response, set_continue_message, process_tools_for_sysmsg
 from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
                               ChatCompletionResponder, ChatCompletionStreamingResponder)
+
+CM_TOOLS_LEFT = 'Please use this information to continue your response, or to give a final response.'
+CM_NO_TOOLS_LEFT = 'Please use this information to give a final response.'
 
 
 class model_manager(model_client_mixin):
@@ -35,6 +38,7 @@ class model_manager(model_client_mixin):
         self.model = Model()
         self.model.load(model_path)
         self.model_type = self.model.model.model_type
+        self._internal_tools = (TOOLIO_BYPASS_TOOL, TOOLIO_FINAL_RESPONSE_TOOL)
         super().__init__(model_type=self.model.model.model_type, tool_reg=tool_reg, logger=logger,
                          sysmsg_leadin=sysmsg_leadin, remove_used_tools=remove_used_tools)
 
@@ -119,8 +123,11 @@ class model_manager(model_client_mixin):
             # 'usage': {'completion_tokens': 24, 'prompt_tokens': 15, 'total_tokens': 39},
             # 'object': 'chat.completion', 'id': 'chatcmpl-6434200784_1722311129', 'created': 1722311129,
             # 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'}
+            first_resp = None
             async for resp in self._completion_trip(messages, stream, req_tool_spec, max_tokens=max_tokens,
                                                     temperature=temperature):
+                if first_resp is None:
+                    first_resp = resp
                 resp_msg = resp['choices'][0]['message']
                 # resp_msg can be None e.g. if generation finishes due to length
                 if resp_msg:
@@ -133,16 +140,13 @@ class model_manager(model_client_mixin):
                 first_chunk = False
             if tool_call_resp:
                 max_trips -= 1
-                bypass_response = self._check_tool_handling_bypass(resp)
-                if bypass_response:
-                    # LLM refused to call a tool, and provided an alternative response
-                    yield bypass_response
+                direct_response = self._check_tool_handling_bypass(first_resp)
+                if direct_response:
+                    # LLM called an internal tool either as a bypass, or for finishing up; treat as direct response
+                    yield direct_response
                     break
 
-                tool_responses = await self._execute_tool_calls(resp, req_tools)
-                for call_id, callee_name, callee_args, result in tool_responses:
-                    # print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
-                    set_tool_response(messages, call_id, callee_name, callee_args, str(result), model_flags=self.model_flags)
+                tool_responses = await self._execute_tool_calls(first_resp, req_tools)
                 called_names = [ callee_name for call_id, callee_name, callee_args, result in tool_responses ]
                 if self._remove_used_tools:
                     # Many FLOSS LLMs get confused if they see a tool definition still in the response back
@@ -150,6 +154,11 @@ class model_manager(model_client_mixin):
                     trimmed_req_tools = { k: v for (k, v) in req_tools.items() if k not in called_names }
                     req_tools = trimmed_req_tools
                     req_tool_spec = [ s for f, s in req_tools.values() ]
+                for call_id, callee_name, callee_args, result in tool_responses:
+                    # print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
+                    set_tool_response(messages, call_id, callee_name, callee_args, str(result), model_flags=self.model_flags)
+                continue_msg = CM_TOOLS_LEFT if req_tool_spec else CM_NO_TOOLS_LEFT
+                set_continue_message(messages, continue_msg, model_flags=self.model_flags)
             else:
                 # No tools called, so no more trips
                 break
@@ -164,7 +173,7 @@ class model_manager(model_client_mixin):
     async def _completion_trip(self, messages, stream, req_tool_spec, max_tokens=128, temperature=0.1):
         # schema, tool_sysmsg = process_tool_sysmsg(req_tool_spec, self.logger, leadin=self.sysmsg_leadin)
         # Schema, including no-tool fallback, plus string spec of available tools, for use in constructing sysmsg
-        full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(req_tool_spec)
+        full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(req_tool_spec, self._internal_tools)
         if stream:
             responder = ToolCallStreamingResponder(self.model, self.model_path)
         else:
@@ -209,7 +218,7 @@ class debug_model_manager(model_manager):
         '''
         if self._trip_log is None:
             self._trip_log = []
-        full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(req_tool_spec)
+        full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(req_tool_spec, self._internal_tools)
         self._trip_log.append(({'messages': messages, 'schema': full_schema}))
         if stream:
             responder = ToolCallStreamingResponder(self.model, self.model_path)
