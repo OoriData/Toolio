@@ -141,7 +141,7 @@ toolio_request --apibase="http://localhost:8000" --prompt-file=/tmp/llmprompt.tx
 
 There is sometimes confusion over the various ways to constrain LLM output
 
-* You can basically beg the model through prompt engineering (detailed instructions, few-shot, etc.), then attempt generation, check the results, and retry if it doesn't conform (perhaps with further LLM begging in the re-prompt). This gives uneven results, is slow and wasteful.
+* You can basically beg the model through prompt engineering (detailed instructions, few-shot, etc.), then attempt generation, check the results, and retry if it doesn't conform (perhaps with further LLM begging in the re-prompt). This gives uneven results, is slow and wasteful, and ends up requiring much more powerful LLMs.
 * Toolio's approach: convert the input format of the grammar (JSON schema in this case) into a state machine which applies those rules as hard constraints on the output sampler. Rather than begging the LLM, we steer it.
 
 In either case you get better results if you've trained or fine-tuned the model with a lot of examples of the desired output syntax and structure, but that alone is not the key element.
