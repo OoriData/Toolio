@@ -69,6 +69,8 @@ TOOLIO_FINAL_RESPONSE_TOOL = {
     'parameters': {'type': 'object', 'properties':
                     {'response': {'type': 'string', 'description': 'Message text for the user'}}}}
 
+DEFAULT_INTERNAL_TOOLS = (TOOLIO_BYPASS_TOOL, TOOLIO_FINAL_RESPONSE_TOOL)
+
 
 def load_or_connect(ref: str):
     '''

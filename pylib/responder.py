@@ -13,7 +13,7 @@ from toolio.common import TOOLIO_MODEL_TYPE_FIELD
 
 
 class ChatCompletionResponder:
-    def __init__(self, model_name: str, model_type: str):
+    def __init__(self, model_name: str, model_type):
         self.object_type = 'chat.completion'
         self.model_name = model_name
         self.model_type = model_type
@@ -170,6 +170,9 @@ class ToolCallResponder(ChatCompletionResponder):
 
 class ToolCallStreamingResponder(ToolCallResponder):
     def __init__(self, model, model_name: str, tools: list[dict]):
+        '''
+        Needs the list of tools so hooks can be inserted for guiding the LLM to select a tool
+        '''
         model_type = model.model.model_type
         super().__init__(model_name, model_type)
         self.object_type = 'chat.completion.chunk'

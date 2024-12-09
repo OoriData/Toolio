@@ -133,23 +133,24 @@ class struct_mlx_chat_api(model_client_mixin):
 
         if max_trips < 1:
             raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
-        # XXX: Should we offer a way to override the default to not use a schema?
-        schema = json_schema or self.default_schema
-        schema_str = json.dumps(schema)
+        schema = json_schema or self.default_schema  # Remember: default, default schema (😂) is None
+        schema_str = None
+        if schema:
+            schema_str = json.dumps(schema)
 
-        # Replace JSON schema cutout references with the actual schema
-        cutout_replaced = False
-        for m in messages:
-            # XXX: content should always be in m, though. Validate?
-            if 'content' in m and json_schema_cutout in m['content']:
-                m['content'] = m['content'].replace(json_schema_cutout, schema_str)
-                cutout_replaced = True
+            # Replace JSON schema cutout references with the actual schema
+            cutout_replaced = False
+            for m in messages:
+                # XXX: content should always be in m, though. Validate?
+                if 'content' in m and json_schema_cutout in m['content']:
+                    m['content'] = m['content'].replace(json_schema_cutout, schema_str)
+                    cutout_replaced = True
 
-        if not cutout_replaced:
-            warnings.warn('JSON Schema provided, but no place found to replace it.'
-                          ' Will be tacked on the end of the first user message', stacklevel=2)
-            target_msg = next(m for m in messages if m['role'] == 'user')
-            target_msg['content'] += '\nRespond in JSON according to this schema: ' + schema_str
+            if not cutout_replaced:
+                warnings.warn('JSON Schema provided, but no place found to replace it.'
+                            ' Will be tacked on the end of the first user message', stacklevel=2)
+                target_msg = next(m for m in messages if m['role'] == 'user')
+                target_msg['content'] += '\nRespond in JSON according to this schema: ' + schema_str
 
         req_data = {'messages': messages, **kwargs}
         if toolset:

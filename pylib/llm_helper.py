@@ -6,7 +6,7 @@
 import json
 import logging
 
-from toolio.common import TOOL_CHOICE_AUTO, model_client_mixin, TOOLIO_BYPASS_TOOL, TOOLIO_FINAL_RESPONSE_TOOL
+from toolio.common import TOOL_CHOICE_AUTO, model_client_mixin, DEFAULT_INTERNAL_TOOLS
 from toolio.common import extract_content  # Just really for legacy import patterns # noqa: F401
 from toolio.schema_helper import Model
 from toolio.prompt_helper import set_tool_response, set_continue_message, process_tools_for_sysmsg
@@ -38,7 +38,7 @@ class model_manager(model_client_mixin):
         self.model = Model()
         self.model.load(model_path)
         self.model_type = self.model.model.model_type
-        self._internal_tools = (TOOLIO_BYPASS_TOOL, TOOLIO_FINAL_RESPONSE_TOOL)
+        self._internal_tools = DEFAULT_INTERNAL_TOOLS
         super().__init__(model_type=self.model.model.model_type, tool_reg=tool_reg, logger=logger,
                          sysmsg_leadin=sysmsg_leadin, remove_used_tools=remove_used_tools)
 
@@ -175,7 +175,7 @@ class model_manager(model_client_mixin):
         # Schema, including no-tool fallback, plus string spec of available tools, for use in constructing sysmsg
         full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(req_tool_spec, self._internal_tools)
         if stream:
-            responder = ToolCallStreamingResponder(self.model, self.model_path)
+            responder = ToolCallStreamingResponder(self.model, self.model_path, tool_schemas)
         else:
             responder = ToolCallResponder(self.model_path, self.model_type)
         messages = self.reconstruct_messages(messages, sysmsg=sysmsg)
