@@ -22,6 +22,7 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 - Clean up how optional dependencies are handled
 - Tool-calling prompting enhancements
+- Clean up HTTP client & server interpretation of tool-calling & schemata
 
 ## [0.5.1] - 20241029
 
