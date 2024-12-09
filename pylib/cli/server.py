@@ -12,6 +12,13 @@ TODO: Break out CLI stuff (new module for FastAPI bits)
 toolio_server --model=mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
 
 Note: you can also point `--model` at a downloaded or converted MLX model on local storage.
+
+Set up to use uvicorn. See [this note](https://github.com/fastapi/fastapi/discussions/7299#discussioncomment-5135746)
+by the FastAPI maintainer. You can tweak your setitng to use e.g. Gunicorn, Hypercorn or Daphne.
+
+> By default, if you install with pip install "uvicorn[standard]" that will include and use Uvloop,
+> a drop-in replacement for the asyncio loop, with very high performance.
+> You don't have to do anything in your code to use it, just install uvicorn[standard].
 '''
 
 import os

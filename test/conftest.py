@@ -20,7 +20,7 @@ class session:
     'Test inputs & expected outputs'
     label: str
     req_messages: list
-    resp_json: dict
+    resp_json: dict | None
     resp_type: response_type
     intermed_resp_jsons: list = None
     req_schema: dict = None

@@ -1,9 +1,9 @@
 ![toolio_github_header](https://github.com/OoriData/Toolio/assets/12983495/e6b35d7f-4b37-4f77-8dc5-1bafc8befb86)
 ♪ Come along and ride on a fantastic voyage 🎵, with AI riding shotgun seat and a flatbed full of tools.
 
-Toolio is an OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It's also really useful for more reliable tool calling. Toolio is based on the MLX framework for Apple Silicon (e.g. M1/M2/M3/M4 Macs), so **that's the only supported platform at present**.
+Toolio is an OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It also implements tool calling by LLMs. Toolio is based on the MLX framework for Apple Silicon (e.g. M1/M2/M3/M4 Macs), so **that's the only supported platform at present**.
 
-Call it tool-calling or function-calling, or agentic workflows based on schema-driven output, or guided generation, or steered response. If you're non-technical, you can think of it as your "GPT Private Agent". It can handle tasks for you, without spilling your secrets.
+Whether the buzzword you're pursuing is tool-calling, function-calling, agentic workflows, compound AI, guaranteed structured output, schema-driven output, guided generation, or steered response, give Toolio a try. You can think of it as your "GPT Private Agent", handling intelligent tasks for you, without spilling your secrets.
 
 Builds on: https://github.com/otriscon/llm-structured-output/
 
@@ -74,7 +74,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
    }'
 ```
 
-This is actually not constraining to any output structure, and is just using the LLM as is. The result will be in complx-looking JSON, but read on for more straightforward ways to query against a Toolio server.
+This is actually not constraining to any output structure, and is just using the LLM as is. The result will be in complex-looking JSON, but read on for more straightforward ways to query against a Toolio server.
 
 ## Specifying an output JSON schema
 
@@ -100,6 +100,10 @@ The key here is specification of a JSON schema. The schema is escaped for the co
 ```
 
 It looks a bit intimidating, at first, if you're not familiar with [JSON schema](https://json-schema.org/), but they're reasonably easy to learn. [You can follow the primer](https://json-schema.org/learn/getting-started-step-by-step).
+
+Ultimately, you can just paste an example of your desired output structure and ask ChatGPT, Claude, Gemini, etc. as simply as: "Please write a JSON schema to represent this data format."
+
+Toolio's JSOn schema support is a subset, so you might need to tweak a schema before using it with Toolio. Most of the unsupported features can be just omitted, or expressed in the prompt or schema descriptions instead.
 
 ## Using the command line client instead
 
@@ -262,15 +266,24 @@ Final response:
 
 It's a good example of how tool-calling can pretty easily go wrong. As LLMs get more and more capable this should become more reliable. It may well be that top-end LLMs such as OpenAI's GPT and Anthropic's Claude would be able to handle this case, but of course you can't run these privately on MLX.
 
-# Write your own tools
+## Write your own tools
 
 Study the examples in the `pylib/tools` and in the `demo` directories to see how easy it is.
 
-# LLM-specific flows
+## LLM-specific flows
 
 LLMs actually get trained for tool calling, and sometimes get trained to expect different patterns. Toolio supports some flags for adapting the tool flow based on the LLM you're using on the server.
 
 For notes on more models see https://github.com/OoriData/Toolio/wiki/Notes-on-how-MLX-models-handle-tool%E2%80%90calling
+
+## Caveat: tool-calling vs orchestration in code
+
+Tool-calling is very neat, but it involves delegating process control to the LLM. For many use-cases this is an extremely resource-intensive way to implement processes which may be reasonably
+determinate, or which may be broken down into subprocesses which the LLM can at least orchestrate
+more eficiently and reliably. You can often get farther faster by using Toolio's schema-steered structured output instead (i.e. the `json_schema` parameter). For example, you can give the LLM
+a simpler context and a simple list of next steps to take, rather than have it mastermind the entire process at once.
+
+See the `demo` directory for some examples of this.
 
 # Python HTTP client
 
@@ -518,9 +531,9 @@ Apache 2
 
 # Why this, anyway?
 
-In our thinking, and that of many others working in the space for a while, agent/tool systems are where GenAI are most likely to deliver practical value. Watch out, though, because McKinsey has seen fit to apply their $1,000/hr opinions along the same lines. ["Why agents are the next frontier of generative AI"](https://www.mckinsey.com/capabilities/mckinsey-digital/our-insights/why-agents-are-the-next-frontier-of-generative-ai?cid=soc-web) (July 2024)
+In our thinking, and that of many others working in the space for a while, compound AI agent systems are where GenAI are most likely to deliver practical value. Watch out, though, because McKinsey has seen fit to apply their $1,000/hr opinions along the same lines. ["Why agents are the next frontier of generative AI"](https://www.mckinsey.com/capabilities/mckinsey-digital/our-insights/why-agents-are-the-next-frontier-of-generative-ai?cid=soc-web) (July 2024). The Toolio mindset adds in an aesthetic of data privacy, and smaller, cooperating, individually capable LLMs; rather than huge, monolithic LLMs hosted on someone else's black box server.
 
-[Parrot/Gorilla cartoon here]
+<!-- [Parrot/Gorilla cartoon here?] -->
 
 # Project name
 

@@ -7,15 +7,21 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
-## [Unreleased]
+## [0.5.2] - 20241210
 
 ### Added
 
 - `toolio.common.load_or_connect` convenience function
+- `reddit_newsletter` multi-agent demo
 
 ### Changed
 
-- Make the `{json_schema}` template "cutout" configurable, and change the default
+- Make the `{json_schema}` template "cutout" configurable, and change the default (to `#!JSON_SCHEMA!#`)
+
+### Fixed
+
+- Clean up how optional dependencies are handled
+- Tool-calling prompting enhancements
 
 ## [0.5.1] - 20241029
 
