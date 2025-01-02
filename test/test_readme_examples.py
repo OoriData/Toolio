@@ -29,7 +29,7 @@ async def test_number_guess(httpserver, session_cls):
     httpserver.expect_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(number_guess_ht.resp_json)
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
-    resp = await llm(number_guess_ht.req_messages)
+    resp = await llm.complete(number_guess_ht.req_messages)
     assert resp['response_type'] == number_guess_ht.resp_type
     assert resp.first_choice_text == number_guess_ht.resp_text
 
@@ -38,7 +38,7 @@ async def test_naija_extract(httpserver, session_cls):
     naija_extract_ht = session_cls(
         label='Naija extract (Hermes theta)',
         req_messages=[{'role': 'user', 'content': 'Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#'}],
-        req_schema={'type': 'array', 'items': {'type': 'object', 'properties': {'name': {'type': 'string'}, 'continent': {'type': 'string'}}}},
+        req_schema={'type': 'array', 'items': {'type': 'object', 'properties': {'name': {'type': 'string'}, 'continent': {'type': 'string'}}, "required": ["name", "continent"]}},
         resp_text='[{"name": "Nigeria", "continent": "Africa"}]',
         resp_json={'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': '[{"name": "Nigeria", "continent": "Africa"}]'}, 'finish_reason': 'stop'}], 'usage': {'completion_tokens': 15, 'prompt_tokens': 74, 'total_tokens': 89}, 'object': 'chat.completion', 'id': 'chatcmpl-5936244368_1719844279', 'created': 1719844279, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'},
         resp_type=response_type.MESSAGE)
@@ -46,7 +46,7 @@ async def test_naija_extract(httpserver, session_cls):
     httpserver.expect_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(naija_extract_ht.resp_json)
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
-    resp = await llm(naija_extract_ht.req_messages)
+    resp = await llm.complete(naija_extract_ht.req_messages)
     assert resp['response_type'] == naija_extract_ht.resp_type
     assert json.loads(resp.first_choice_text.encode('utf-8')) == json.loads(naija_extract_ht.resp_text.encode('utf-8'))
 
@@ -63,7 +63,7 @@ async def test_boulder_weather_1(httpserver, session_cls):
     httpserver.expect_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(boulder_weather_trip1_ht.resp_json)
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
-    resp = await llm(boulder_weather_trip1_ht.req_messages)
+    resp = await llm.complete(boulder_weather_trip1_ht.req_messages)
     assert resp['response_type'] == boulder_weather_trip1_ht.resp_type
 
 @pytest.mark.asyncio
@@ -86,7 +86,7 @@ async def test_square_root(httpserver, session_cls):
     tools_list = cmdline_tools_struct(square_root_ht.req_tools)
     # tool_choice = tools_obj.get('tool_choice', 'auto')
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'), tool_reg=tools_list)
-    resp = await llm(square_root_ht.req_messages, toolset=llm.toolset)
+    resp = await llm.complete_with_tools(square_root_ht.req_messages, toolset=llm.toolset)
     assert resp['response_type'] == square_root_ht.resp_type
     assert resp.first_choice_text == square_root_ht.resp_text
 
@@ -119,6 +119,6 @@ async def test_currency_convert(httpserver, session_cls):
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(currency_convert_ht.resp_json)
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'), tool_reg=currency_convert_ht.req_tools)
-    resp = await llm(currency_convert_ht.req_messages, toolset=['currency_exchange'])
+    resp = await llm.complete_with_tools(currency_convert_ht.req_messages, toolset=['currency_exchange'])
     assert resp['response_type'] == currency_convert_ht.resp_type
     assert resp.first_choice_text == currency_convert_ht.resp_text

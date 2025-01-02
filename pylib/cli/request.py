@@ -86,11 +86,11 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
     tool_choice = tools_obj.get('tool_choice', 'auto') if isinstance(tools_obj, dict) else 'auto'
 
     llm = struct_mlx_chat_api(base_url=apibase, tool_reg=tools_list, logger=logger)
-    resp = asyncio.run(llm(prompt_to_chat(prompt, system=sysprompt), max_tokens=max_tokens, temperature=temp,
+    resp = asyncio.run(llm.sync_call(prompt_to_chat(prompt, system=sysprompt), max_tokens=max_tokens, temperature=temp,
                            json_schema=schema_obj, toolset=llm.toolset, tool_choice=tool_choice, max_trips=max_trips,
                            trip_timeout=trip_timeout))
     if resp['response_type'] == response_type.TOOL_CALL:
-        print('The model invoked the following tool calls to complete the response, but there are no permitted trips remaining.')
+        print('The model invoked the following tool calls, but there are no permitted trips remaining.')
         tcs = resp['choices'][0]['message']['tool_calls']
         for tc in tcs:
             del tc['function']['arguments']

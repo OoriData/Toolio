@@ -1,17 +1,25 @@
 '''
 demo/reddit_newsletter/cli.py
 
-Agent 1: Asks user main topic of interest, with follow-ups to narrow down
+Steps
 
-Agent 2: Checks that the post contains no anti-social material
-
-Agent 1: confirms with the user (who is in effect agent 3) before posting
-
-Additions?
+* Agent1 Initiate an interview with the user: Asks user main topic of interest, with follow-ups to narrow down
+  * Target: Gather a sufficiently rich base of topics
+* Agent2 Map the topic list to a list of forums (in thsi case Subreddits)
+  * Target: Curate a list of forums form which to craft the newsletter
+* Agent3 Gather most recent posts within those forums
+  * Target: Prepare a list of post titles, summaries and links
+* Agent4: Narrow down the gathered post info which match the selected topics
+  * Target: Reduce the list of post titles, summaries and links
+* Agent5: Draft the newsletter
+  * Target: Coherent newspaper copy from the user's voice
+* Agent6: Check that the post contains no anti-social or otherwise problematic material
+  * Target: Content warnings, or all clear
+* User confirm and tailors the article
+* Agent8: Deliver the newsletter
+  * Target: Send success and failure notifications
 
 * Sentiment analysis ("I only want to select positively toned articles")
-
-
 
 First set up your environment & secrets. Useful resource: https://huggingface.co/blog/ucheog/separate-env-setup-from-code
 

@@ -7,6 +7,7 @@ import asyncio
 
 # from toolio.http_schematics import V1Function
 from toolio.llm_helper import model_manager, extract_content
+from toolio.common import load_or_connect
 
 async def amain(mm):
     # Plain chat complete
@@ -22,7 +23,7 @@ async def amain(mm):
     prompt = ('Which countries are mentioned in the sentence \'Adamma went home to Nigeria for the hols\'?'
               'Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#')
     schema = ('{"type": "array", "items":'
-              '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}')
+              '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}, "required": ["name", "continent"]}}')
     msgs = [{'role': 'user', 'content': prompt}]
     async for chunk in extract_content(mm.complete(msgs, json_schema=schema)):
         print(chunk, end='')
@@ -66,7 +67,7 @@ async def amain(mm):
 
     print('\n', '='*40, 'END CHECK')
 
-model = sys.argv[1]
+modelid = sys.argv[1]
 
 # Checking tool registration within the model manager initialization
 SQUARE_ROOT_METADATA = {'name': 'square_root',
@@ -89,8 +90,8 @@ from math import sqrt  # noqa: E402
 # each tool is either a callable with built-in metadata, or a tuple of (func, metadata)
 TOOLS = [(sqrt, SQUARE_ROOT_METADATA)]
 
-mm = model_manager(model, tool_reg=TOOLS)
-print('Model type:', mm.model_type)
+mm = load_or_connect(modelid, tool_reg=TOOLS)
+# print('Model type:', mm.model_type)
 
 resp = asyncio.run(amain(mm))
 
@@ -98,5 +99,5 @@ resp = asyncio.run(amain(mm))
 # @click.option('--model', type=str, help='HuggingFace ID or disk path for locally-hosted MLF format model')
 # def main(model):
 #     print('XXX', model)
-#     mm = model_manager(model)
+#     mm = load_or_connect(model)
 #     resp = asyncio.run(amain(mm))

@@ -6,18 +6,15 @@
 import json
 import logging
 
-from toolio.common import TOOL_CHOICE_AUTO, model_client_mixin, DEFAULT_INTERNAL_TOOLS
 from toolio.common import extract_content  # Just really for legacy import patterns # noqa: F401
+from toolio.toolcall import mixin as toolcall_mixin, process_tools_for_sysmsg, TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS
 from toolio.schema_helper import Model
-from toolio.prompt_helper import set_tool_response, set_continue_message, process_tools_for_sysmsg
+# from toolio.prompt_helper import set_tool_response, set_continue_message, process_tools_for_sysmsg
 from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
                               ChatCompletionResponder, ChatCompletionStreamingResponder)
 
-CM_TOOLS_LEFT = 'Please use this information to continue your response, or to give a final response.'
-CM_NO_TOOLS_LEFT = 'Please use this information to give a final response.'
 
-
-class model_manager(model_client_mixin):
+class model_manager(toolcall_mixin):
     def __init__(self, model_path, tool_reg=None, logger=logging, sysmsg_leadin=None, remove_used_tools=True):
         '''
         For client-side loading of MLX LLM models in Toolio
@@ -37,12 +34,12 @@ class model_manager(model_client_mixin):
         self.model_path = model_path
         self.model = Model()
         self.model.load(model_path)
-        self.model_type = self.model.model.model_type
+        # self.model_type = self.model.model.model_type
         self._internal_tools = DEFAULT_INTERNAL_TOOLS
         super().__init__(model_type=self.model.model.model_type, tool_reg=tool_reg, logger=logger,
                          sysmsg_leadin=sysmsg_leadin, remove_used_tools=remove_used_tools)
 
-    async def complete(self, messages, stream=True, json_schema=None, max_tokens=128, temperature=0.1):
+    async def iter_complete(self, messages, stream=True, json_schema=None, max_tokens=128, temperature=0.1):
         '''
         Invoke the LLM with a completion request
 
@@ -83,7 +80,7 @@ class model_manager(model_client_mixin):
     # Seems streaming is not quite yet working
     # async def complete_with_tools(self, messages, toolset, stream=True, max_trips=3, tool_choice=None,
     #                               max_tokens=128, temperature=0.1):
-    async def complete_with_tools(self, messages, toolset=None, stream=False, json_schema=None, max_trips=3,
+    async def iter_complete_with_tools(self, messages, toolset=None, stream=False, json_schema=None, max_trips=3,
                                   tool_choice=TOOL_CHOICE_AUTO, max_tokens=128, temperature=0.1):
         '''
         Make a chat completion with tools, then continue to iterate completions as long as the LLM
@@ -138,34 +135,31 @@ class model_manager(model_client_mixin):
                         assert 'delta' in resp['choices'][0]
                         yield resp
                 first_chunk = False
+
             if tool_call_resp:
                 max_trips -= 1
-                direct_response = self._check_tool_handling_bypass(first_resp)
-                if direct_response:
+                bypass_response = self._check_tool_handling_bypass(first_resp)
+                if bypass_response:
                     # LLM called an internal tool either as a bypass, or for finishing up; treat as direct response
-                    yield direct_response
+                    yield bypass_response
                     break
 
-                tool_responses = await self._execute_tool_calls(first_resp, req_tools)
-                called_names = [ callee_name for call_id, callee_name, callee_args, result in tool_responses ]
+                called_names = await self._handle_tool_responses(messages, first_resp, req_tools, req_tool_spec)
+
+                # Possibly move into _handle_tool_responses? If so, same in llm_helper.py
                 if self._remove_used_tools:
                     # Many FLOSS LLMs get confused if they see a tool definition still in the response back
                     # And loop back with a new tool request. Remove it to avoid this.
-                    trimmed_req_tools = { k: v for (k, v) in req_tools.items() if k not in called_names }
-                    req_tools = trimmed_req_tools
-                    req_tool_spec = [ s for f, s in req_tools.values() ]
-                for call_id, callee_name, callee_args, result in tool_responses:
-                    # print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
-                    set_tool_response(messages, call_id, callee_name, callee_args, str(result), model_flags=self.model_flags)
-                continue_msg = CM_TOOLS_LEFT if req_tool_spec else CM_NO_TOOLS_LEFT
-                set_continue_message(messages, continue_msg, model_flags=self.model_flags)
+                    req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
+                    req_tool_spec = [s for f, s in req_tools.values()]
+
             else:
                 # No tools called, so no more trips
                 break
             if not req_tool_spec:
                 # This is the final call, with all tools removed, so just do a regular completion
                 # XXX: Interplay between tool use & schema is actually much trickier than it seems, at first
-                async for resp in self.complete(messages, json_schema=json_schema, stream=stream, max_tokens=max_tokens,
+                async for resp in self.iter_complete(messages, json_schema=json_schema, stream=stream, max_tokens=max_tokens,
                                                 temperature=temperature):
                     yield resp
                 break
@@ -204,6 +198,83 @@ class model_manager(model_client_mixin):
                 )
             else:
                 raise RuntimeError(f'Unknown result operation {result["op"]}')
+
+
+class local_model_runner(model_manager):
+    '''
+    Simplified async interface for MLX model completions.
+
+    Example:
+        runner = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+        resp = await runner('What is 2 + 2?')
+        # Or with tools:
+        resp = await runner('What is 2 + 2?', tools=['calculator'])
+    '''
+    async def __call__(self, prompt, tools=None, json_schema=None, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
+                       max_tokens=128, temperature=0.1):
+        '''
+        Complete a prompt, optionally using tools or schema constraints.
+
+        Args:
+            messages (List[str]) - Prompt in the form of list of messages to send ot the LLM for completion.
+                If you have a system prompt, and you are setting up to call tools, it will be updated with
+                the tool spec
+
+            json_schema (dict or str) - JSON schema to be used to structure the generated response.
+                If given a a string, it will be decoded as JSON
+
+            max_tokens (int, optional): Maximum number of tokens to generate
+
+            temperature (float, optional): Affects how likely the LLM is to select statistically less common tokens
+
+        Args:
+            prompt (str or list): Text prompt or list of chat messages
+            tools (list, optional): List of tool names or specs to make available
+            json_schema (dict, optional): Schema to constrain the response
+            max_trips (int): Maximum number of tool-calling round trips
+            tool_choice (str): How tools should be selected ('auto', 'none', etc)
+            max_tokens (int): Maximum tokens to generate per completion
+            temperature (float): Sampling temperature
+
+        Returns:
+            Response text if no tools used, otherwise the full response object
+        '''
+        # Convert string prompt to chat messages if needed
+        messages = prompt if isinstance(prompt, list) else [{'role': 'user', 'content': prompt}]
+
+        if tools:
+            async for resp in self.iter_complete_with_tools(messages, toolset=tools, stream=False, json_schema=json_schema,
+                max_trips=max_trips, tool_choice=tool_choice, max_tokens=max_tokens, temperature=temperature):
+                return resp
+        else:
+            async for resp in self.iter_complete(messages, json_schema=json_schema, stream=False, max_tokens=max_tokens,
+                temperature=temperature):
+                return resp
+
+    async def complete(self, prompt, **kwargs):
+        '''
+        Simple completion without tools. Returns just the response text.
+        
+        Args:
+            prompt (str or list): Text prompt or list of chat messages
+            **kwargs: Additional arguments passed to __call__
+        '''
+        resp = await self(prompt, **kwargs)
+        if isinstance(resp, str):
+            return resp
+        # Extract text from response object
+        return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message']['content']
+
+    async def complete_with_tools(self, prompt, tools, **kwargs):
+        '''
+        Complete using specified tools. Returns full response object.
+        
+        Args:
+            prompt (str or list): Text prompt or list of chat messages
+            tools (list): List of tool names or specs to make available
+            **kwargs: Additional arguments passed to __call__
+        '''
+        return await self(prompt, tools=tools, **kwargs)
 
 
 class debug_model_manager(model_manager):

@@ -7,11 +7,20 @@ Whether the buzzword you're pursuing is tool-calling, function-calling, agentic 
 
 Builds on: https://github.com/otriscon/llm-structured-output/
 
+## Schema-steered structured output (3SO)
+
+There is sometimes confusion over the various ways to constrain LLM output
+
+* You can basically beg the model through prompt engineering (detailed instructions, few-shot, etc.), then attempt generation, check the results, and retry if it doesn't conform (perhaps with further LLM begging in the re-prompt). This gives uneven results, is slow and wasteful, and ends up requiring much more powerful LLMs.
+* Toolio's approach, which we call schema-steered structured output (3SO), is to convert the input format of the grammar (JSON schema in this case) into a state machine which applies those rules as hard constraints on the output sampler. Rather than begging the LLM, we steer it.
+
+In either case you get better results if you've trained or fine-tuned the model with a lot of examples of the desired output syntax and structure, but the LLM's size, power and training are only part of the picture with S3O.
+
 ## Specific components and usage modes
 
 * `toolio_server` (command line)—Host MLX-format LLMs for structured output query or function calling via HTTP requests
 * `toolio_request` (command line)—Execute HTTP client requests against a server
-* `toolio.model_manager` (Python API)—Encapsulate an MLX-format LLM for convenient, in-resident query with structured output or function calling
+* `toolio.local_model_runner` (Python API)—Encapsulate an MLX-format LLM for convenient, in-resident query with structured output or function calling
 * `toolio.client.struct_mlx_chat_api` (Python API)—Make a toolio server request from code
 
 <table><tr>
@@ -119,7 +128,7 @@ Here is an example using JSON schema constraint to extract structured data from 
 
 ```sh
 export LMPROMPT='Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#'
-export LMSCHEMA='{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}'
+export LMSCHEMA='{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}, "required": ["name", "continent"]}}'
 toolio_request --apibase="http://localhost:8000" --prompt=$LMPROMPT --schema=$LMSCHEMA
 ```
 
@@ -137,18 +146,9 @@ Or if you have the prompt or schema written to files:
 
 ```sh
 echo 'Which countries are mentioned in the sentence "Adamma went home to Nigeria for the hols"? Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#' > /tmp/llmprompt.txt
-echo '{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}' > /tmp/countries.schema.json
+echo '{"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}, "required": ["name", "continent"]}}' > /tmp/countries.schema.json
 toolio_request --apibase="http://localhost:8000" --prompt-file=/tmp/llmprompt.txt --schema-file=/tmp/countries.schema.json
 ```
-
-## Applying schema the Toolio way
-
-There is sometimes confusion over the various ways to constrain LLM output
-
-* You can basically beg the model through prompt engineering (detailed instructions, few-shot, etc.), then attempt generation, check the results, and retry if it doesn't conform (perhaps with further LLM begging in the re-prompt). This gives uneven results, is slow and wasteful, and ends up requiring much more powerful LLMs.
-* Toolio's approach: convert the input format of the grammar (JSON schema in this case) into a state machine which applies those rules as hard constraints on the output sampler. Rather than begging the LLM, we steer it.
-
-In either case you get better results if you've trained or fine-tuned the model with a lot of examples of the desired output syntax and structure, but that alone is not the key element.
 
 ## Tool calling
 
@@ -322,18 +322,17 @@ You might study the command line `pylib/cli/request.py` for further insight.
 
 # Direct usage via Python
 
-You can also, of course, just load the model and run inference on it without bothering with HTTP client/server. The `model_manager` class is a convenient interface for this.
+You can also, of course, just load the model and run inference on it without bothering with HTTP client/server. The `local_model_runner` class is a convenient interface for this.
 
 ```py
 import asyncio
-from toolio.llm_helper import model_manager
-from toolio.common import response_text
+from toolio.llm_helper import local_model_runner
 
-toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
-    print(await response_text(tmm.complete(msgs)))
+    print(await tmm.complete(msgs))
 
 asyncio.run(say_hello(toolio_mm))
 ```
@@ -350,19 +349,21 @@ Toolio uses OpenAI API conventions a lot under the hood. If you run the followin
 
 ```py
 import asyncio
-from toolio.llm_helper import model_manager, extract_content
+from toolio.llm_helper import local_model_runner, extract_content
 
-toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
-    # This is what response_text() is doing behind the scenes
-    async for chunk_struct in tmm.complete(msgs):
+    # FYI, there is a fnction toolio.common.response_text which can help cnsume iter_* methods
+    async for chunk_struct in tmm.iter_complete(msgs):
         print(chunk_struct)
         break
 
 asyncio.run(say_hello(toolio_mm))
 ```
+
+from 
 
 You should see something like:
 
@@ -384,13 +385,13 @@ Notice there is more information, now that it's finished (`'finish_reason': 'sto
 
 ```py
 import asyncio
-from toolio.llm_helper import model_manager, extract_content
+from toolio.llm_helper import local_model_runner, extract_content
 
-toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
-    async for chunk in tmm.complete(msgs):
+    async for chunk in tmm.iter_complete(msgs):
         content = chunk['choices'][0]['delta']['content']
         if content is not None:
             print(content, end='')
@@ -417,17 +418,16 @@ As mentioned, you can specify tools and schemata.
 
 ```py
 import asyncio
-from toolio.llm_helper import model_manager
-from toolio.common import response_text
+from toolio.llm_helper import local_model_runner
 
-toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
 async def say_hello(tmm):
     prompt = ('Which countries are mentioned in the sentence \'Adamma went home to Nigeria for the hols\'?'
               'Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#')
     schema = ('{"type": "array", "items":'
-              '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}}}')
-    print(await response_text(tmm.complete([{'role': 'user', 'content': prompt}], json_schema=schema)))
+              '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}, "required": ["name", "continent"]}}')
+    print(await tmm.complete([{'role': 'user', 'content': prompt}], json_schema=schema))
 
 asyncio.run(say_hello(toolio_mm))
 ```
@@ -437,21 +437,20 @@ asyncio.run(say_hello(toolio_mm))
 ```py
 import asyncio
 from math import sqrt
-from toolio.llm_helper import model_manager
-from toolio.common import response_text
+from toolio.llm_helper import local_model_runner
 
 SQUARE_ROOT_METADATA = {'name': 'square_root', 'description': 'Get the square root of the given number',
                             'parameters': {'type': 'object', 'properties': {
                                 'square': {'type': 'number',
                                 'description': 'Number from which to find the square root'}},
                             'required': ['square']}}
-toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
+toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
                           tool_reg=[(sqrt, SQUARE_ROOT_METADATA)])
 
 
 async def query_sq_root(tmm):
     msgs = [ {'role': 'user', 'content': 'What is the square root of 256?'} ]
-    print(await response_text(tmm.complete_with_tools(msgs)))
+    print(await tmm.complete_with_tools(msgs, tools=['square_root']))
 
 asyncio.run(query_sq_root(toolio_mm))
 ```
@@ -478,15 +477,14 @@ In order to override the system prompt from code, just set it in the initial cha
 ```py
 import asyncio
 from math import sqrt
-from toolio.llm_helper import model_manager
-from toolio.common import response_text
+from toolio.llm_helper import local_model_runner
 
 SQUARE_ROOT_METADATA = {'name': 'square_root', 'description': 'Get the square root of the given number',
                             'parameters': {'type': 'object', 'properties': {
                                 'square': {'type': 'number',
                                 'description': 'Number from which to find the square root'}},
                             'required': ['square']}}
-toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
+toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
                           tool_reg=[(sqrt, SQUARE_ROOT_METADATA)])
 
 # System prompt will be used to direct the LLM's tool-calling
@@ -499,7 +497,7 @@ async def query_sq_root(tmm):
       {'role': 'system', 'content': SYSPROMPT},
       {'role': 'user', 'content': 'What is the square root of 256?'}
       ]
-    print(await response_text(tmm.complete_with_tools(msgs)))
+    print(await tmm.complete_with_tools(msgs))
 
 asyncio.run(query_sq_root(toolio_mm))
 ```

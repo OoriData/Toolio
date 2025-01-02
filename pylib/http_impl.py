@@ -10,8 +10,8 @@ import warnings
 
 from llm_structured_output.util.output import info, debug
 
-from toolio.common import prompt_handler, DEFAULT_INTERNAL_TOOLS
-from toolio.prompt_helper import process_tools_for_sysmsg
+from toolio.common import prompt_handler
+from toolio.toolcall import DEFAULT_INTERNAL_TOOLS, process_tools_for_sysmsg
 from toolio.http_schematics import V1ChatMessage, V1ChatCompletionsRequest, V1ResponseFormatType
 from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
                               ChatCompletionResponder, ChatCompletionStreamingResponder)
@@ -115,5 +115,3 @@ async def post_v1_chat_completions_impl(state, req_data: V1ChatCompletionsReques
             )
         else:
             assert False
-
-
