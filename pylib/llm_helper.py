@@ -171,6 +171,37 @@ class model_manager(toolcall_mixin):
                     yield resp
                 break
 
+    async def complete(self, messages, stream=True, json_schema=None, max_tokens=128, temperature=0.1):
+        '''
+        Simple completion without tools. Returns just the response text.
+
+        Args:
+            prompt (str or list): Text prompt or list of chat messages
+            **kwargs: Additional arguments passed to __call__
+        '''
+        async for resp in self.iter_complete(messages, json_schema=json_schema, stream=False, max_tokens=max_tokens,
+            temperature=temperature):
+            break
+
+        if isinstance(resp, str):
+            return resp
+        # Extract text from response object
+        return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message']['content']
+
+    async def complete_with_tools(self, messages, tools=None, stream=False, json_schema=None, max_trips=3,
+                                    tool_choice=TOOL_CHOICE_AUTO, max_tokens=128, temperature=0.1):
+        '''
+        Complete using specified tools. Returns full response object.
+
+        Args:
+            prompt (str or list): Text prompt or list of chat messages
+            tools (list): List of tool names or specs to make available
+            **kwargs: Additional arguments passed to __call__
+        '''
+        async for resp in self.iter_complete_with_tools(messages, tools=tools, stream=False, json_schema=json_schema,
+            max_trips=max_trips, tool_choice=tool_choice, max_tokens=max_tokens, temperature=temperature):
+            return resp
+
     async def _completion_trip(self, messages, stream, req_tool_spec, max_tokens=128, temperature=0.1):
         # schema, tool_sysmsg = process_tool_sysmsg(req_tool_spec, self.logger, leadin=self.sysmsg_leadin)
         # Schema, including no-tool fallback, plus string spec of available tools, for use in constructing sysmsg
@@ -257,31 +288,6 @@ class local_model_runner(model_manager):
             async for resp in self.iter_complete(messages, json_schema=json_schema, stream=False, max_tokens=max_tokens,
                 temperature=temperature):
                 return resp
-
-    async def complete(self, prompt, **kwargs):
-        '''
-        Simple completion without tools. Returns just the response text.
-
-        Args:
-            prompt (str or list): Text prompt or list of chat messages
-            **kwargs: Additional arguments passed to __call__
-        '''
-        resp = await self(prompt, **kwargs)
-        if isinstance(resp, str):
-            return resp
-        # Extract text from response object
-        return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message']['content']
-
-    async def complete_with_tools(self, prompt, tools, **kwargs):
-        '''
-        Complete using specified tools. Returns full response object.
-
-        Args:
-            prompt (str or list): Text prompt or list of chat messages
-            tools (list): List of tool names or specs to make available
-            **kwargs: Additional arguments passed to __call__
-        '''
-        return await self(prompt, tools=tools, **kwargs)
 
 
 # FIXME: Out of date

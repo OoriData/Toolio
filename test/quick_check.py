@@ -15,8 +15,7 @@ async def amain(mm):
         # {'role': 'user', 'content': 'I am thinking of a number between 1 and 10. Guess what it is.'}
         {'role': 'user', 'content': 'Hello! How are you?'}
         ]
-    async for chunk in extract_content(mm.complete(msgs)):
-        print(chunk, end='')
+    print(await mm.complete(msgs))
 
     print('\n', '='*40, 'Country extraction')
 
@@ -25,8 +24,7 @@ async def amain(mm):
     schema = ('{"type": "array", "items":'
               '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}, "required": ["name", "continent"]}}')
     msgs = [{'role': 'user', 'content': prompt}]
-    async for chunk in extract_content(mm.complete(msgs, json_schema=schema)):
-        print(chunk, end='')
+    print(await mm.complete(msgs, json_schema=schema))
 
     print('\n', '='*40, 'Square root of 256, pt 1')
 
@@ -36,24 +34,20 @@ async def amain(mm):
     # Pydantic form
     # tools = [V1Function(name='square_root', description='Get the square root of the given number', parameters={'type': 'object', 'properties': {'square': {'type': 'number', 'description': 'Number from which to find the square root'}}, 'required': ['square']})]
     msgs = [ {'role': 'user', 'content': prompt} ]
-    async for chunk in extract_content(mm.complete_with_tools(msgs, toolset=['square_root'], tool_choice='auto')):
-        print(chunk, end='')
+    print(await mm.complete_with_tools(msgs, tools=['square_root'], tool_choice='auto'))
 
     print('\n', '='*40, 'Square root of 256, pt 2')
     # Actually we'll want to use pt 2 to test the Pydantic function reg form
     mm.clear_tools()
     mm.register_tool(sqrt, schema=SQUARE_ROOT_METADATA)
-
-    async for chunk in extract_content(mm.complete_with_tools(msgs, toolset=['square_root'], tool_choice='auto')):
-        print(chunk, end='')
+    print(await mm.complete_with_tools(msgs, tools=['square_root'], tool_choice='auto'))
 
     print('\n', '='*40, 'Square root of 256, pt 3')
 
     schema = ('{"type": "object", "properties": {"result": {"type": "number"}}}')
     prompt = 'What is the square root of 256?'
     msgs = [ {'role': 'user', 'content': prompt} ]
-    async for chunk in extract_content(mm.complete_with_tools(msgs, toolset=['square_root'], json_schema=schema)):
-        print(chunk, end='')
+    print(await mm.complete_with_tools(msgs, tools=['square_root'], json_schema=schema))
 
     print('\n', '='*40, 'Usain bolt')
 
@@ -61,9 +55,7 @@ async def amain(mm):
     prompt='Usain Bolt ran the 100m race in 9.58s. What was his average velocity?'
     mm.register_tool(calculator)
     msgs = [ {'role': 'user', 'content': prompt} ]
-
-    async for chunk in extract_content(mm.complete_with_tools(msgs, toolset=['calculator'])):
-        print(chunk, end='')
+    print(await mm.complete_with_tools(msgs, tools=['calculator']))
 
     print('\n', '='*40, 'END CHECK')
 

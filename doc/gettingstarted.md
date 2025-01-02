@@ -75,13 +75,30 @@ Use Toolio directly in Python:
 
 ```python
 import asyncio
+from toolio.llm_helper import model_manager
+
+toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+
+async def say_hello(tmm):
+    msgs = [{"role": "user", "content": "Hello! How are you?"}]
+    print(await tmm.complete(msgs))
+
+asyncio.run(say_hello(toolio_mm))
+```
+
+### 6. Iterative Python API Usage
+
+Or the same ting, but iteratively getting chunks of the results, where supported:
+
+```python
+import asyncio
 from toolio.llm_helper import model_manager, extract_content
 
 toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
-    async for chunk in extract_content(tmm.complete(msgs)):
+    async for chunk in extract_content(tmm.iter_complete(msgs)):
         print(chunk, end='')
 
 asyncio.run(say_hello(toolio_mm))
