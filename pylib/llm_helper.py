@@ -6,7 +6,7 @@
 import json
 import logging
 
-from toolio.common import extract_content  # Just really for legacy import patterns # noqa: F401
+from toolio.common import extract_content, DEFAULT_JSON_SCHEMA_CUTOUT  # Just really for legacy import patterns # noqa: F401
 from toolio.toolcall import mixin as toolcall_mixin, process_tools_for_sysmsg, TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS
 from toolio.schema_helper import Model
 # from toolio.prompt_helper import set_tool_response, set_continue_message, process_tools_for_sysmsg
@@ -15,7 +15,8 @@ from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
 
 
 class model_manager(toolcall_mixin):
-    def __init__(self, model_path, tool_reg=None, logger=logging, sysmsg_leadin=None, remove_used_tools=True):
+    def __init__(self, model_path, tool_reg=None, logger=logging, sysmsg_leadin=None, remove_used_tools=True,
+                 default_schema=None, json_schema_cutout=DEFAULT_JSON_SCHEMA_CUTOUT):
         '''
         For client-side loading of MLX LLM models in Toolio
 
@@ -37,7 +38,8 @@ class model_manager(toolcall_mixin):
         # self.model_type = self.model.model.model_type
         self._internal_tools = DEFAULT_INTERNAL_TOOLS
         super().__init__(model_type=self.model.model.model_type, tool_reg=tool_reg, logger=logger,
-                         sysmsg_leadin=sysmsg_leadin, remove_used_tools=remove_used_tools)
+                         sysmsg_leadin=sysmsg_leadin, remove_used_tools=remove_used_tools,
+                         default_schema=default_schema, json_schema_cutout=json_schema_cutout)
 
     async def iter_complete(self, messages, stream=True, json_schema=None, max_tokens=128, temperature=0.1):
         '''
@@ -63,13 +65,18 @@ class model_manager(toolcall_mixin):
             responder = ChatCompletionStreamingResponder(self.model_path, self.model_type)
         else:
             responder = ChatCompletionResponder(self.model_path, self.model_type)
-        if json_schema:
-            if isinstance(json_schema, str):
-                schema = json.loads(json_schema)
-            else:
-                schema = json_schema
+
+        if not(json_schema):
+            schema, schema_str = self.default_schema, self.default_schema_str
+        elif isinstance(json_schema, dict):
+            schema, schema_str = json_schema, json.dumps(json_schema)
+        elif isinstance(json_schema, str):
+            schema, schema_str = json.loads(json_schema), json_schema
         else:
-            schema = {'type': 'object'}
+            raise ValueError(f'Invalid JSON schema: {json_schema}')
+
+        if schema:
+            self.replace_cutout(messages, schema_str)
 
         # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
         cache_prompt = False
@@ -78,10 +85,10 @@ class model_manager(toolcall_mixin):
             yield resp
 
     # Seems streaming is not quite yet working
-    # async def complete_with_tools(self, messages, toolset, stream=True, max_trips=3, tool_choice=None,
+    # async def complete_with_tools(self, messages, tools, stream=True, max_trips=3, tool_choice=None,
     #                               max_tokens=128, temperature=0.1):
-    async def iter_complete_with_tools(self, messages, toolset=None, stream=False, json_schema=None, max_trips=3,
-                                  tool_choice=TOOL_CHOICE_AUTO, max_tokens=128, temperature=0.1):
+    async def iter_complete_with_tools(self, messages, tools=None, stream=False, json_schema=None, max_trips=3,
+                                        tool_choice=TOOL_CHOICE_AUTO, max_tokens=128, temperature=0.1):
         '''
         Make a chat completion with tools, then continue to iterate completions as long as the LLM
         is using at least one tool, or until max_trips are exhausted
@@ -91,7 +98,7 @@ class model_manager(toolcall_mixin):
                 If you have a system prompt, and you are setting up to call tools, it will be updated with
                 the tool spec
 
-            toolset (list) - tools specified for this request, presumably a subset of overall tool registry.
+            tools (list) - tools specified for this request, presumably a subset of overall tool registry.
                 Each entry is either a tool name, in which the invocation schema is as registered, or a full
                 tool-calling format stanza, in which case, for this request, only the implementaton is used
                 from the initial registry
@@ -104,7 +111,7 @@ class model_manager(toolcall_mixin):
         Yields:
             str: response chunks
         '''
-        toolset = toolset or self.toolset
+        toolset = tools or self.toolset
         # schema_str = json.dumps(json_schema)
         req_tools = self._resolve_tools(toolset)
         req_tool_spec = [ s for f, s in req_tools.values() ]
@@ -243,7 +250,7 @@ class local_model_runner(model_manager):
         messages = prompt if isinstance(prompt, list) else [{'role': 'user', 'content': prompt}]
 
         if tools:
-            async for resp in self.iter_complete_with_tools(messages, toolset=tools, stream=False, json_schema=json_schema,
+            async for resp in self.iter_complete_with_tools(messages, tools=tools, stream=False, json_schema=json_schema,
                 max_trips=max_trips, tool_choice=tool_choice, max_tokens=max_tokens, temperature=temperature):
                 return resp
         else:
@@ -254,7 +261,7 @@ class local_model_runner(model_manager):
     async def complete(self, prompt, **kwargs):
         '''
         Simple completion without tools. Returns just the response text.
-        
+
         Args:
             prompt (str or list): Text prompt or list of chat messages
             **kwargs: Additional arguments passed to __call__
@@ -268,7 +275,7 @@ class local_model_runner(model_manager):
     async def complete_with_tools(self, prompt, tools, **kwargs):
         '''
         Complete using specified tools. Returns full response object.
-        
+
         Args:
             prompt (str or list): Text prompt or list of chat messages
             tools (list): List of tool names or specs to make available
@@ -277,6 +284,7 @@ class local_model_runner(model_manager):
         return await self(prompt, tools=tools, **kwargs)
 
 
+# FIXME: Out of date
 class debug_model_manager(model_manager):
     def __init__(self, model_path, tool_reg=None, logger=logging, sysmsg_leadin=None, remove_used_tools=True):
         super().__init__(model_path, tool_reg=tool_reg, logger=logger, sysmsg_leadin=sysmsg_leadin,

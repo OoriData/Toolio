@@ -5,6 +5,7 @@
 '''
 Common bits; can be imported without MLX (e.g. for client use on non-Mac platforms)
 '''
+import json
 import logging
 import warnings
 from pathlib import Path  # noqa: E402
@@ -43,6 +44,8 @@ FLAGS_LOOKUP = {
 }
 
 TOOLIO_MODEL_TYPE_FIELD = 'toolio.model_type'
+
+DEFAULT_JSON_SCHEMA_CUTOUT = '#!JSON_SCHEMA!#'
 
 
 def load_or_connect(ref: str, **kwargs):
@@ -83,11 +86,15 @@ class prompt_handler:
     Encapsulates functionality for manipulating prompts, client or server side
     '''
     # XXX: Default option for sysmgg?
-    def __init__(self, model_type=None, logger=None, sysmsg_leadin=''):
+    def __init__(self, model_type=None, logger=None, sysmsg_leadin='', default_schema=None,
+                 json_schema_cutout=DEFAULT_JSON_SCHEMA_CUTOUT):
         self.model_type = model_type
         self.model_flags = FLAGS_LOOKUP.get(model_type, DEFAULT_FLAGS)
         self.sysmsg_leadin = sysmsg_leadin
         self.logger = logger or logging
+        self.default_schema = default_schema
+        self.default_schema_str = json.dumps(default_schema) if default_schema else None
+        self.json_schema_cutout = json_schema_cutout
 
     def reconstruct_messages(self, msgs, sysmsg=None):
         '''
@@ -117,6 +124,31 @@ class prompt_handler:
             new_msgs = msgs[:]
 
         return new_msgs
+
+    def replace_cutout(self, messages, schema_str):
+        '''
+        Replace JSON schema cutout references with the actual schema; if not found, append to the first user message
+        Return a copy of the messages with the schema inserted
+        '''
+        cutout_replaced = False
+        new_messages = messages.copy()
+        for m in messages:
+            # XXX: content should always be in m, though. Validate?
+            if 'content' in m and self.json_schema_cutout in m['content']:
+                new_m = m.copy()
+                new_m['content'] = new_m['content'].replace(self.json_schema_cutout, schema_str)
+                new_messages.append(new_m)
+                cutout_replaced = True
+            else:
+                new_messages.append(m)
+
+        if not cutout_replaced:
+            warnings.warn('JSON Schema provided, but no place found to replace it.'
+                        ' Will be tacked on the end of the first user message', stacklevel=2)
+            target_msg = next(m for m in new_messages if m['role'] == 'user')
+            # FIXME: More robust message validation, perhaps add a helper in prompt_helper.py
+            assert target_msg is not None
+            target_msg['content'] += '\nRespond in JSON according to this schema: ' + schema_str
 
 
 async def extract_content(resp_stream):

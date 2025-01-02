@@ -24,9 +24,9 @@ from ogbujipt import config
 from ogbujipt.llm_wrapper import llm_response, response_type
 
 # from toolio.common import FLAGS_LOOKUP  # TOOL_CHOICE_AUTO
-from toolio.common import DEFAULT_FLAGS as DEFAULT_MODEL_FLAGS
+from toolio.common import DEFAULT_FLAGS as DEFAULT_MODEL_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT
 from toolio.toolcall import mixin as toolcall_mixin
-from toolio.toolcall import set_tool_response, TOOL_CHOICE_NONE, DEFAULT_JSON_SCHEMA_CUTOUT
+from toolio.toolcall import set_tool_response, TOOL_CHOICE_NONE
 
 
 class tool_flag(Flag):
@@ -75,9 +75,6 @@ class struct_mlx_chat_api(toolcall_mixin):
             kwargs (dict, optional): Extra parameters for the API or for the model host
         '''
         self.parameters = config.attr_dict(kwargs)
-        self.default_schema = default_schema
-        self.default_schema_str = json.dumps(default_schema) if default_schema else None
-        self.json_schema_cutout = json_schema_cutout
         self.base_url = base_url
         if self.base_url:
             # If the user includes the API version in the base, don't add it again
@@ -92,10 +89,11 @@ class struct_mlx_chat_api(toolcall_mixin):
         # Internal structure to manage these. Key is tool_call_id; value is tuple of callable, kwargs
         # self._pending_tool_calls = {}
         self._flags = flags
-        super().__init__(tool_reg=tool_reg, logger=logger)
+        super().__init__(tool_reg=tool_reg, logger=logger, default_schema=default_schema,
+                         json_schema_cutout=json_schema_cutout)
 
-    async def iter_call(self, messages, req='chat/completions', json_schema=None, toolset=None, sysprompt=None,
-                       tool_choice='auto', apikey=None, max_trips=3, trip_timeout=90.0, json_schema_cutout=None,
+    async def iter_call(self, messages, req='chat/completions', json_schema=None, tools=None, sysprompt=None,
+                       tool_choice='auto', apikey=None, max_trips=3, trip_timeout=90.0,
                        max_tokens=1024, temperature=0.1, **kwargs):
         '''
         Invoke the LLM with a completion request. Foundation method for making API calls to the LLM server.
@@ -111,15 +109,12 @@ class struct_mlx_chat_api(toolcall_mixin):
 
             sysprompt (str) - System prompt to use in the chat messages
 
-            toolset (list) - tools specified for this request, presumably a subset of overall tool registry.
+            tools (list) - tools specified for this request, presumably a subset of overall tool registry.
                 Each entry is either a tool name, in which the invocation schema is as registered, or a full
                 tool-calling format stanza, in which case, for this request, only the implementaton is used
                 from the initial registry
 
             trip_timeout (float) - timeout (in seconds) per LLM API request trip; defaults to 90s
-
-            json_schema_cutout (str) - Prompt text which should be replaced by actual JSON schema;
-                overrides instance default
 
             kwargs (dict, optional): Extra parameters to pass to the model via API.
                 See Completions.create in OpenAI API, but in short, these:
@@ -134,9 +129,8 @@ class struct_mlx_chat_api(toolcall_mixin):
             warnings.warn('For the HTTP client stream is always forced to False for now', stacklevel=2)
             kwargs['stream'] = False
         # Uncomment for test case construction
-        # print('MESSAGES', messages, '\n', 'json_schema', json_schema, '\n', 'TOOLS', toolset)
-        toolset = toolset or self.toolset
-        json_schema_cutout = json_schema_cutout or self.json_schema_cutout
+        # print('MESSAGES', messages, '\n', 'json_schema', json_schema, '\n', 'TOOLS', tools)
+        toolset = tools or self.toolset
         assert max_trips > 0
 
         req_data = {'messages': messages, 'max_tokens': max_tokens, 'temperature': temperature, **kwargs}
@@ -150,30 +144,13 @@ class struct_mlx_chat_api(toolcall_mixin):
         else:
             raise ValueError(f'Invalid JSON schema: {json_schema}')
 
-        if json_schema:
+        if schema:
             req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
 
         req = req.strip('/')
 
         if max_trips < 1:
             raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
-
-        def replace_cutout():  # Will modify messages in place
-            '''Replace JSON schema cutout references with the actual schema'''
-            cutout_replaced = False
-            for m in messages:
-                # XXX: content should always be in m, though. Validate?
-                if 'content' in m and json_schema_cutout in m['content']:
-                    m['content'] = m['content'].replace(json_schema_cutout, schema_str)
-                    cutout_replaced = True
-
-            if not cutout_replaced:
-                warnings.warn('JSON Schema provided, but no place found to replace it.'
-                            ' Will be tacked on the end of the first user message', stacklevel=2)
-                target_msg = next(m for m in messages if m['role'] == 'user')
-                # FIXME: More robust message validation, perhaps add a helper in prompt_helper.py
-                assert target_msg is not None
-                target_msg['content'] += '\nRespond in JSON according to this schema: ' + schema_str
 
         req_data = {'messages': messages, **kwargs}
         if toolset:
@@ -215,7 +192,7 @@ class struct_mlx_chat_api(toolcall_mixin):
                         break
 
                     called_names = await self._handle_tool_responses(messages, resp, req_tools)
-                    
+
                     # Possibly combine with llm_helper.complete_with_tools & move into _handle_tool_responses?
                     if tool_flag.REMOVE_USED_TOOLS in self._flags:
                         # Many FLOSS LLMs get confused if they see a tool definition still in the response back
@@ -239,7 +216,7 @@ class struct_mlx_chat_api(toolcall_mixin):
 
         else:
             if schema:
-                replace_cutout()
+                self.replace_cutout(messages, schema_str)
                 req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
 
             async for chunk in self._http_trip(req, req_data, trip_timeout, apikey, **kwargs):
@@ -257,12 +234,12 @@ class struct_mlx_chat_api(toolcall_mixin):
         async for chunk in call_result:
             yield chunk
 
-    async def iter_complete_with_tools(self, messages, toolset=None, stream=False, json_schema=None, 
+    async def iter_complete_with_tools(self, messages, tools=None, stream=False, json_schema=None, 
                                 max_trips=3, tool_choice='auto', max_tokens=128, temperature=0.1):
         __doc__ = 'Wrapper, with tool-calling, for the following\n' + self.iter_call.__doc__
         call_result: AsyncGenerator[Any, None] = self.iter_call(  # type: ignore
             messages=messages,
-            toolset=toolset,
+            tools=tools,
             max_trips=max_trips,
             tool_choice=tool_choice,
             max_tokens=max_tokens,
@@ -273,12 +250,12 @@ class struct_mlx_chat_api(toolcall_mixin):
         async for chunk in call_result:
             yield chunk
 
-    async def __call__(self, messages, req='chat/completions', json_schema=None, toolset=None, sysprompt=None,
-                       tool_choice='auto', apikey=None, max_trips=3, trip_timeout=90.0, json_schema_cutout=None,
+    async def __call__(self, messages, req='chat/completions', json_schema=None, tools=None, sysprompt=None,
+                       tool_choice='auto', apikey=None, max_trips=3, trip_timeout=90.0,
                        max_tokens=1024, temperature=0.1, **kwargs):
         __doc__ = 'Convenience, synchronous wrapper for the following\n' + self.iter_call.__doc__
-        if toolset:
-            return await self.complete_with_tools(messages, toolset=toolset, stream=False, json_schema=json_schema,
+        if tools:
+            return await self.complete_with_tools(messages, tools=tools, stream=False, json_schema=json_schema,
                                 max_trips=max_trips, tool_choice=tool_choice, max_tokens=max_tokens, temperature=temperature)
         else:
             return await self.complete(messages, stream=False, json_schema=json_schema, max_tokens=max_tokens, temperature=temperature)
@@ -295,12 +272,12 @@ class struct_mlx_chat_api(toolcall_mixin):
         async for resp in call_result:
             return resp  # First response chunk should be the only & everything
 
-    async def complete_with_tools(self, messages, toolset=None, stream=False, json_schema=None, 
+    async def complete_with_tools(self, messages, tools=None, stream=False, json_schema=None, 
                                 max_trips=3, tool_choice='auto', max_tokens=128, temperature=0.1):
         __doc__ = 'Wrapper, with tool-calling, for the following\n' + self.iter_call.__doc__
         call_result: AsyncGenerator[Any, None] = self.iter_call(  # type: ignore
             messages=messages,
-            toolset=toolset,
+            tools=tools,
             max_trips=max_trips,
             tool_choice=tool_choice,
             max_tokens=max_tokens,
@@ -314,31 +291,29 @@ class struct_mlx_chat_api(toolcall_mixin):
     # Were I to decide to uglify with the type annotations
     # async def sync_call(self, messages, req: str = 'chat/completions',
     #                 json_schema: Optional[dict] = None,
-    #                 toolset: Optional[list] = None,
+    #                 tools: Optional[list] = None,
     #                 sysprompt: Optional[str] = None,
     #                 tool_choice: str = 'auto',
     #                 apikey: Optional[str] = None,
     #                 max_trips: int = 3,
     #                 trip_timeout: float = 90.0,
-    #                 json_schema_cutout: Optional[str] = None,
     #                 max_tokens: int = 1024,
     #                 temperature: float = 0.1,
     #                 **kwargs) -> Any:
-    async def sync_call(self, messages, req='chat/completions', json_schema=None, toolset=None, sysprompt=None,
-                    tool_choice='auto', apikey=None, max_trips=3, trip_timeout=90.0, json_schema_cutout=None,
+    async def sync_call(self, messages, req='chat/completions', json_schema=None, tools=None, sysprompt=None,
+                    tool_choice='auto', apikey=None, max_trips=3, trip_timeout=90.0,
                     stream=False, max_tokens=1024, temperature=0.1, **kwargs):
         __doc__ = 'Synchronous wrapper for the following\n' + self.iter_call.__doc__
         call_result: AsyncGenerator[Any, None] = self.iter_call(  # type: ignore
             messages=messages,
             req=req,
             json_schema=json_schema,
-            toolset=toolset,
+            tools=tools,
             sysprompt=sysprompt,
             tool_choice=tool_choice,
             apikey=apikey,
             max_trips=max_trips,
             trip_timeout=trip_timeout,
-            json_schema_cutout=json_schema_cutout,
             stream=stream,  # Passed on only so they can get the warning, if need be
             max_tokens=max_tokens,
             temperature=temperature,

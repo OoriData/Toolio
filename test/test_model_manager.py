@@ -15,7 +15,7 @@ async def test_model_manager_completion(mock_model):
     ])
 
     result = []
-    async for chunk in mm.iter_complete(['Test prompt']):
+    async for chunk in mm.iter_complete([{'role': 'user', 'content': 'Test prompt'}]):
         # FIXME: First chunk is empty. Needs more attention.
         result.append(chunk)
     assert len(result) == 2

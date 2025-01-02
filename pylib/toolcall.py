@@ -9,7 +9,7 @@ import warnings
 
 from toolio.http_schematics import V1Function
 
-from toolio.common import prompt_handler, LANG, model_flag, DEFAULT_FLAGS
+from toolio.common import prompt_handler, LANG, model_flag, DEFAULT_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT
 from toolio.util import check_callable
 from toolio.http_schematics import V1ChatMessage
 
@@ -18,8 +18,6 @@ CM_NO_TOOLS_LEFT = 'Please use this information to give a final response.'
 
 TOOL_CHOICE_AUTO = 'auto'
 TOOL_CHOICE_NONE = 'none'
-
-DEFAULT_JSON_SCHEMA_CUTOUT = '#!JSON_SCHEMA!#'
 
 TOOLIO_BYPASS_TOOL_NAME = 'toolio.bypass'
 TOOLIO_BYPASS_TOOL = {
@@ -43,7 +41,7 @@ class mixin(prompt_handler):
     Encapsulates tool registry. Remember that tool-calling occurs on the client side.
     '''
     def __init__(self, model_type=None, logger=None, sysmsg_leadin='', tool_reg=None, remove_used_tools=True,
-                 json_schema_cutout=DEFAULT_JSON_SCHEMA_CUTOUT):
+                 default_schema=None, json_schema_cutout=DEFAULT_JSON_SCHEMA_CUTOUT):
         '''
         Args:
 
@@ -60,7 +58,8 @@ class mixin(prompt_handler):
         remove_used_tools - if True each tool will only be an option until the LLM calls it,
                             after which it will be removed from the options in subsequent trips
         '''
-        super().__init__(model_type=model_type, logger=logger, sysmsg_leadin=sysmsg_leadin)
+        super().__init__(model_type=model_type, logger=logger, sysmsg_leadin=sysmsg_leadin,
+                         default_schema=default_schema, json_schema_cutout=json_schema_cutout)
         self._remove_used_tools = remove_used_tools
         self._tool_registry = {}
         # Prepare library of tools
