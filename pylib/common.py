@@ -81,9 +81,10 @@ with open(HERE / Path('resource/language.toml'), mode='rb') as fp:
     LANG = word_loom.load(fp)
 
 
-class prompt_handler:
+class model_runner_base:
     '''
-    Encapsulates functionality for manipulating prompts, client or server side
+    Encapsulates logic to interact with models, local or remote, and in particular
+    deals with manipulating prompts
     '''
     # XXX: Default option for sysmgg?
     def __init__(self, model_type=None, logger=None, sysmsg_leadin='', default_schema=None,
@@ -149,6 +150,9 @@ class prompt_handler:
             # FIXME: More robust message validation, perhaps add a helper in prompt_helper.py
             assert target_msg is not None
             target_msg['content'] += '\nRespond in JSON according to this schema: ' + schema_str
+
+
+prompt_handler = model_runner_base  # Backward compatibility
 
 
 async def extract_content(resp_stream):

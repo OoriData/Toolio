@@ -8,7 +8,6 @@ Encapsulate HTTP query of LLMs for structured response, as hosted by MLXStructur
 Modeled on ogbujipt.llm_wrapper.openai_api & ogbujipt.llm_wrapper.openai_chat_api
 
 '''
-# import logging
 import json
 import warnings
 import logging
@@ -16,17 +15,14 @@ from enum import Flag, auto
 from typing import AsyncGenerator, Any
 
 import httpx
-# import asyncio
 
 from amara3 import iri
 
 from ogbujipt import config
 from ogbujipt.llm_wrapper import llm_response, response_type
 
-# from toolio.common import FLAGS_LOOKUP  # TOOL_CHOICE_AUTO
-from toolio.common import DEFAULT_FLAGS as DEFAULT_MODEL_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT
-from toolio.toolcall import mixin as toolcall_mixin
-from toolio.toolcall import set_tool_response, TOOL_CHOICE_NONE
+from toolio.common import DEFAULT_JSON_SCHEMA_CUTOUT
+from toolio.toolcall import mixin as toolcall_mixin, TOOL_CHOICE_NONE
 
 
 class tool_flag(Flag):
@@ -92,20 +88,72 @@ class struct_mlx_chat_api(toolcall_mixin):
         super().__init__(tool_reg=tool_reg, logger=logger, default_schema=default_schema,
                          json_schema_cutout=json_schema_cutout)
 
-    async def iter_call(self, messages, req='chat/completions', json_schema=None, tools=None, sysprompt=None,
+    async def iter_complete(self, messages, req='chat/completions', json_schema=None, sysprompt=None,
+                       apikey=None, trip_timeout=90.0, max_tokens=1024, temperature=0.1, **kwargs):
+        '''
+        Invoke the LLM with a completion request, with an optional schema
+
+        Args:
+            messages (list) - Prompt in the form of list of messages to send ot the LLM for completion.
+
+            req (str) - API endpoint to invoke
+
+            json_schema - JSON schema to be used to guide the final generation step (after all tool-calling, if any)
+
+            sysprompt (str) - System prompt to use in the chat messages
+
+            trip_timeout (float) - timeout (in seconds) for the LLM API request trip; defaults to 90s
+
+            kwargs (dict, optional): Extra parameters to pass to the model via API.
+                See Completions.create in OpenAI API, but in short, these:
+                temperature, max_tokens, best_of, echo, frequency_penalty, logit_bias, logprobs,
+                presence_penalty, seed, stop, stream, suffix, top_p, userq
+
+                Note: for now additional kwargs are ignored. stream is defintiely always forced to False
+        Yields:
+            dict: Response from the LLM, either in a single chunk, or multiple, depending on streaming etc.
+        '''
+        if kwargs.get('stream'):
+            warnings.warn('For the HTTP client stream is always forced to False for now', stacklevel=2)
+            kwargs['stream'] = False
+
+        req_data = {'messages': messages, 'max_tokens': max_tokens, 'temperature': temperature, **kwargs}
+
+        if not(json_schema):
+            schema, schema_str = self.default_schema, self.default_schema_str
+        elif isinstance(json_schema, dict):
+            schema, schema_str = json_schema, json.dumps(json_schema)
+        elif isinstance(json_schema, str):
+            schema, schema_str = json.loads(json_schema), json_schema
+        else:
+            raise ValueError(f'Invalid JSON schema: {json_schema}')
+
+        if schema:
+            req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
+
+        req = req.strip('/')
+
+        req_data = {'messages': messages, **kwargs}
+
+        if schema:
+            self.replace_cutout(messages, schema_str)
+            req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
+
+        async for chunk in self._http_trip(req, req_data, trip_timeout, apikey, **kwargs):
+            yield chunk
+
+    async def iter_complete_with_tools(self, messages, req='chat/completions', tools=None, sysprompt=None,
                        tool_choice='auto', apikey=None, max_trips=3, trip_timeout=90.0,
                        max_tokens=1024, temperature=0.1, **kwargs):
         '''
         Invoke the LLM with a completion request. Foundation method for making API calls to the LLM server.
 
         Args:
-            messages (str) - Prompt in the form of list of messages to send ot the LLM for completion.
+            messages (list) - Prompt in the form of list of messages to send to the LLM for completion.
                 If you have a system prompt, and you are setting up to call tools, it will be updated with
                 the tool spec
 
             req (str) - API endpoint to invoke
-
-            json_schema - JSON schema to be used to guide the final generation step (after all tool-calling, if any)
 
             sysprompt (str) - System prompt to use in the chat messages
 
@@ -129,23 +177,10 @@ class struct_mlx_chat_api(toolcall_mixin):
             warnings.warn('For the HTTP client stream is always forced to False for now', stacklevel=2)
             kwargs['stream'] = False
         # Uncomment for test case construction
-        # print('MESSAGES', messages, '\n', 'json_schema', json_schema, '\n', 'TOOLS', tools)
+        # print('MESSAGES', messages, '\n', '\n', 'TOOLS', tools)
         toolset = tools or self.toolset
-        assert max_trips > 0
 
         req_data = {'messages': messages, 'max_tokens': max_tokens, 'temperature': temperature, **kwargs}
-
-        if not(json_schema):
-            schema, schema_str = self.default_schema, self.default_schema_str
-        elif isinstance(json_schema, dict):
-            schema, schema_str = json_schema, json.dumps(json_schema)
-        elif isinstance(json_schema, str):
-            schema, schema_str = json.loads(json_schema), json_schema
-        else:
-            raise ValueError(f'Invalid JSON schema: {json_schema}')
-
-        if schema:
-            req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
 
         req = req.strip('/')
 
@@ -153,174 +188,125 @@ class struct_mlx_chat_api(toolcall_mixin):
             raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
 
         req_data = {'messages': messages, **kwargs}
-        if toolset:
-            req_tools = self._resolve_tools(toolset)
-            req_tool_spec = [{'type': 'function', 'function': s} for f, s in req_tools.values()]
-            req_data['tools'] = req_tool_spec
-            req_data['tool_choice'] = tool_choice
-            if req_tools and tool_choice == TOOL_CHOICE_NONE:
-                warnings.warn('Tools were provided, but tool_choice was set to `none`, so they\'ll never be used')
-            # if tool_options: req_data['tool_options'] = tool_options
-            # for t in tools_list:
-            #     self.register_tool(t['function']['name'], t['function'].get('pyfunc'))
-            req_data['tools'] = req_tool_spec
+        req_tools = self._resolve_tools(toolset)
+        req_tool_spec = [{'type': 'function', 'function': s} for f, s in req_tools.values()]
+        req_data['tools'] = req_tool_spec
+        req_data['tool_choice'] = tool_choice
+        if req_tools and tool_choice == TOOL_CHOICE_NONE:
+            warnings.warn('Tools were provided, but tool_choice was set to `none`, so they\'ll never be used')
+        # if tool_options: req_data['tool_options'] = tool_options
+        # for t in tools_list:
+        #     self.register_tool(t['function']['name'], t['function'].get('pyfunc'))
+        req_data['tools'] = req_tool_spec
 
-            # Enter tool-calling sequence
-            llm_call_needed = True
-            while max_trips > 0 and llm_call_needed:
-                # If the tools list is empty (perhaps we removed the last one in a prev loop), omit it entirely
-                if 'tools' in req_data and not req_data['tools']:
-                    del req_data['tools']
-                    # XXX: Interplay between tool use & schema is actually much trickier than it seems, at first
-                    if schema:
-                        req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
-                async for chunk in self._http_trip(req, req_data, trip_timeout, apikey, **kwargs):
-                    resp = chunk
-                max_trips -= 1
-                # If LLM has asked for tool calls, prepare to loop back
-                if resp['response_type'] == response_type.TOOL_CALL:
-                    bypass_response = self._check_tool_handling_bypass(resp)
-                    if bypass_response:
-                        # LLM refused to call a tool, and provided an alternative response
-                        yield llm_response.from_openai_chat(bypass_response)
-                        break
-
-                    if not max_trips:
-                        # No more available trips; don't bother calling tools
-                        self.logger.debug('Maximum trips exhausted')
-                        yield resp
-                        break
-
-                    called_names = await self._handle_tool_responses(messages, resp, req_tools)
-
-                    # Possibly combine with llm_helper.complete_with_tools & move into _handle_tool_responses?
-                    if tool_flag.REMOVE_USED_TOOLS in self._flags:
-                        # Many FLOSS LLMs get confused if they see a tool definition still in the response back
-                        # And loop back with a new tool request. Remove it to avoid this.
-                        remove_list = [
-                            i for (i, t) in enumerate(req_data.get('tools', []))
-                            if t.get('function', {}).get('name') in called_names]
-                        # print(f'removing tools with index {remove_list} from request structure')
-                        for i in remove_list:
-                            req_data['tools'].pop(i)
-
-                else:
-                    llm_call_needed = False
-
-            # Loop exited. We have a final response, or exhausted allowed trips
-            if max_trips <= 0:
-                # FIXME: i18n
-                warnings.warn('Maximum LLM trips exhausted without a final answer')
-
-            yield resp  # Most recent response is final
-
-        else:
-            if schema:
-                self.replace_cutout(messages, schema_str)
-                req_data['response_format'] = {'type': 'json_object', 'schema': schema_str}
-
+        # Enter tool-calling sequence
+        llm_call_needed = True
+        while max_trips > 0 and llm_call_needed:
+            # If the tools list is empty (perhaps we removed the last one in a prev loop), omit it entirely
+            if 'tools' in req_data and not req_data['tools']:
+                del req_data['tools']
             async for chunk in self._http_trip(req, req_data, trip_timeout, apikey, **kwargs):
-                yield chunk
+                resp = chunk
+            max_trips -= 1
+            # If LLM has asked for tool calls, prepare to loop back
+            if resp['response_type'] == response_type.TOOL_CALL:
+                bypass_response = self._check_tool_handling_bypass(resp)
+                if bypass_response:
+                    # LLM refused to call a tool, and provided an alternative response
+                    yield llm_response.from_openai_chat(bypass_response)
+                    break
 
-    async def iter_complete(self, messages, stream=False, json_schema=None, max_tokens=128, temperature=0.1):
-        __doc__ = 'Wrapper, without tool-calling, for the following\n' + self.iter_call.__doc__
-        call_result: AsyncGenerator[Any, None] = self.iter_call(  # type: ignore
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stream=stream,  # Passed on only so they can get the warning, if need be
-            json_schema=json_schema
-        )
-        async for chunk in call_result:
-            yield chunk
+                if not max_trips:
+                    # No more available trips; don't bother calling tools
+                    self.logger.debug('Maximum trips exhausted')
+                    yield resp
+                    break
 
-    async def iter_complete_with_tools(self, messages, tools=None, stream=False, json_schema=None, 
-                                max_trips=3, tool_choice='auto', max_tokens=128, temperature=0.1):
-        __doc__ = 'Wrapper, with tool-calling, for the following\n' + self.iter_call.__doc__
-        call_result: AsyncGenerator[Any, None] = self.iter_call(  # type: ignore
-            messages=messages,
-            tools=tools,
-            max_trips=max_trips,
-            tool_choice=tool_choice,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stream=stream,  # Passed on only so they can get the warning, if need be
-            json_schema=json_schema
-        )
-        async for chunk in call_result:
-            yield chunk
+                called_names = await self._handle_tool_responses(messages, resp, req_tools)
 
-    async def __call__(self, messages, req='chat/completions', json_schema=None, tools=None, sysprompt=None,
-                       tool_choice='auto', apikey=None, max_trips=3, trip_timeout=90.0,
-                       max_tokens=1024, temperature=0.1, **kwargs):
-        __doc__ = 'Convenience, synchronous wrapper for the following\n' + self.iter_call.__doc__
-        if tools:
-            return await self.complete_with_tools(messages, tools=tools, stream=False, json_schema=json_schema,
-                                max_trips=max_trips, tool_choice=tool_choice, max_tokens=max_tokens, temperature=temperature)
-        else:
-            return await self.complete(messages, stream=False, json_schema=json_schema, max_tokens=max_tokens, temperature=temperature)
+                # Possibly combine with llm_helper.complete_with_tools & move into _handle_tool_responses?
+                if tool_flag.REMOVE_USED_TOOLS in self._flags:
+                    # Many FLOSS LLMs get confused if they see a tool definition still in the response back
+                    # And loop back with a new tool request. Remove it to avoid this.
+                    remove_list = [
+                        i for (i, t) in enumerate(req_data.get('tools', []))
+                        if t.get('function', {}).get('name') in called_names]
+                    # print(f'removing tools with index {remove_list} from request structure')
+                    for i in remove_list:
+                        req_data['tools'].pop(i)
 
-    async def complete(self, messages, stream=False, json_schema=None, max_tokens=128, temperature=0.1):
-        __doc__ = 'Wrapper, without tool-calling, for the following\n' + self.iter_call.__doc__
-        call_result: AsyncGenerator[Any, None] = self.iter_call(  # type: ignore
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stream=stream,  # Passed on only so they can get the warning, if need be
-            json_schema=json_schema
-        )
-        async for resp in call_result:
-            return resp  # First response chunk should be the only & everything
+            else:
+                llm_call_needed = False
 
-    async def complete_with_tools(self, messages, tools=None, stream=False, json_schema=None, 
-                                max_trips=3, tool_choice='auto', max_tokens=128, temperature=0.1):
-        __doc__ = 'Wrapper, with tool-calling, for the following\n' + self.iter_call.__doc__
-        call_result: AsyncGenerator[Any, None] = self.iter_call(  # type: ignore
-            messages=messages,
-            tools=tools,
-            max_trips=max_trips,
-            tool_choice=tool_choice,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stream=stream,  # Passed on only so they can get the warning, if need be
-            json_schema=json_schema
-        )
-        async for resp in call_result:
-            return resp  # First response chunk should be the only & everything
+        # Loop exited. We have a final response, or exhausted allowed trips
+        if max_trips <= 0:
+            # FIXME: i18n
+            warnings.warn('Maximum LLM trips exhausted without a final answer')
 
-    # Were I to decide to uglify with the type annotations
-    # async def sync_call(self, messages, req: str = 'chat/completions',
-    #                 json_schema: Optional[dict] = None,
-    #                 tools: Optional[list] = None,
-    #                 sysprompt: Optional[str] = None,
-    #                 tool_choice: str = 'auto',
-    #                 apikey: Optional[str] = None,
-    #                 max_trips: int = 3,
-    #                 trip_timeout: float = 90.0,
-    #                 max_tokens: int = 1024,
-    #                 temperature: float = 0.1,
-    #                 **kwargs) -> Any:
-    async def sync_call(self, messages, req='chat/completions', json_schema=None, tools=None, sysprompt=None,
-                    tool_choice='auto', apikey=None, max_trips=3, trip_timeout=90.0,
-                    stream=False, max_tokens=1024, temperature=0.1, **kwargs):
-        __doc__ = 'Synchronous wrapper for the following\n' + self.iter_call.__doc__
-        call_result: AsyncGenerator[Any, None] = self.iter_call(  # type: ignore
+        yield resp  # Most recent response is final
+
+    async def complete(self, messages, req='chat/completions', json_schema=None, sysprompt=None,
+                       apikey=None, trip_timeout=90.0, max_tokens=1024, temperature=0.1, **kwargs):
+        __doc__ = 'Convenience, simple async wrapper for the following\n' + self.iter_complete.__doc__
+        call_result: AsyncGenerator[Any, None] = self.iter_complete(  # type: ignore
             messages=messages,
             req=req,
             json_schema=json_schema,
-            tools=tools,
             sysprompt=sysprompt,
+            apikey=apikey,
+            trip_timeout=trip_timeout,
+            max_tokens=max_tokens,
+            temperature=temperature, **kwargs
+        )
+        async for resp in call_result:
+            break # First response chunk should be the only & everything
+
+        if isinstance(resp, str):
+            return resp
+        else:
+            # Extract text from response object
+            return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message']['content']
+
+    async def complete_with_tools(self, messages, req='chat/completions', tools=None, tool_choice='auto', sysprompt=None,
+                                    apikey=None, max_trips=3, trip_timeout=90.0,
+                                    max_tokens=1024, temperature=0.1, **kwargs):
+        __doc__ = 'Wrapper, with tool-calling, for the following\n' + self.iter_complete_with_tools.__doc__
+        call_result: AsyncGenerator[Any, None] = self.iter_complete_with_tools(  # type: ignore
+            messages=messages,
+            req=req,
+            tools=tools,
             tool_choice=tool_choice,
+            sysprompt=sysprompt,
             apikey=apikey,
             max_trips=max_trips,
             trip_timeout=trip_timeout,
-            stream=stream,  # Passed on only so they can get the warning, if need be
             max_tokens=max_tokens,
-            temperature=temperature,
-            **kwargs
+            temperature=temperature, **kwargs
         )
         async for resp in call_result:
-            return resp  # First response chunk should be the only & everything
+            break # First response chunk should be the only & everything
+
+        if isinstance(resp, str):
+            return resp
+        else:
+            # Extract text from response object
+            return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message']['content']
+
+    async def __call__(self, prompt, req='chat/completions', json_schema=None, tools=None, sysprompt=None,
+                       tool_choice='auto', apikey=None, max_trips=3, trip_timeout=90.0,
+                       max_tokens=1024, temperature=0.1, **kwargs):
+        'Convenience, asynchronous wrapper for complete & complete_with_tools'
+        # Convert string prompt to chat messages if needed
+        messages = prompt if isinstance(prompt, list) else [{'role': 'user', 'content': prompt}]
+        if tools:
+            if json_schema:
+                raise ValueError('Cannot specify both tools and a JSON schema')
+            resp = await self.complete_with_tools(messages, tools=tools, stream=False, json_schema=json_schema,
+                                max_trips=max_trips, tool_choice=tool_choice, max_tokens=max_tokens, temperature=temperature)
+        else:
+            resp = await self.complete(messages, stream=False, json_schema=json_schema, max_tokens=max_tokens, temperature=temperature)
+
+        return resp
 
     async def _http_trip(self, req, req_data, timeout, apikey, **kwargs):
         '''

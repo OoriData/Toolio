@@ -29,7 +29,8 @@ async def test_number_guess(httpserver, session_cls):
     httpserver.expect_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(number_guess_ht.resp_json)
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
-    resp = await llm.complete(number_guess_ht.req_messages)
+    async for resp in llm.iter_complete(number_guess_ht.req_messages):
+        break
     assert resp['response_type'] == number_guess_ht.resp_type
     assert resp.first_choice_text == number_guess_ht.resp_text
 
@@ -46,7 +47,8 @@ async def test_naija_extract(httpserver, session_cls):
     httpserver.expect_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(naija_extract_ht.resp_json)
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
-    resp = await llm.complete(naija_extract_ht.req_messages)
+    async for resp in llm.iter_complete(naija_extract_ht.req_messages):
+        break
     assert resp['response_type'] == naija_extract_ht.resp_type
     assert json.loads(resp.first_choice_text.encode('utf-8')) == json.loads(naija_extract_ht.resp_text.encode('utf-8'))
 
@@ -63,7 +65,8 @@ async def test_boulder_weather_1(httpserver, session_cls):
     httpserver.expect_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(boulder_weather_trip1_ht.resp_json)
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
-    resp = await llm.complete(boulder_weather_trip1_ht.req_messages)
+    async for resp in llm.iter_complete(boulder_weather_trip1_ht.req_messages):
+        break
     assert resp['response_type'] == boulder_weather_trip1_ht.resp_type
 
 @pytest.mark.asyncio
@@ -86,7 +89,8 @@ async def test_square_root(httpserver, session_cls):
     tools_list = cmdline_tools_struct(square_root_ht.req_tools)
     # tool_choice = tools_obj.get('tool_choice', 'auto')
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'), tool_reg=tools_list)
-    resp = await llm.complete_with_tools(square_root_ht.req_messages, tools=llm.toolset)
+    async for resp in llm.iter_complete_with_tools(square_root_ht.req_messages, tools=llm.toolset):
+        break
     assert resp['response_type'] == square_root_ht.resp_type
     assert resp.first_choice_text == square_root_ht.resp_text
 
@@ -119,6 +123,7 @@ async def test_currency_convert(httpserver, session_cls):
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(currency_convert_ht.resp_json)
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'), tool_reg=currency_convert_ht.req_tools)
-    resp = await llm.complete_with_tools(currency_convert_ht.req_messages, tools=['currency_exchange'])
+    async for resp in llm.iter_complete_with_tools(currency_convert_ht.req_messages, tools=['currency_exchange']):
+        break
     assert resp['response_type'] == currency_convert_ht.resp_type
     assert resp.first_choice_text == currency_convert_ht.resp_text

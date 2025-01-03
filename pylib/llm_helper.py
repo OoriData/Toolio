@@ -87,7 +87,7 @@ class model_manager(toolcall_mixin):
     # Seems streaming is not quite yet working
     # async def complete_with_tools(self, messages, tools, stream=True, max_trips=3, tool_choice=None,
     #                               max_tokens=128, temperature=0.1):
-    async def iter_complete_with_tools(self, messages, tools=None, stream=False, json_schema=None, max_trips=3,
+    async def iter_complete_with_tools(self, messages, tools=None, stream=False, max_trips=3,
                                         tool_choice=TOOL_CHOICE_AUTO, max_tokens=128, temperature=0.1):
         '''
         Make a chat completion with tools, then continue to iterate completions as long as the LLM
@@ -103,8 +103,6 @@ class model_manager(toolcall_mixin):
                 tool-calling format stanza, in which case, for this request, only the implementaton is used
                 from the initial registry
 
-            json_schema - JSON schema to be used to guide the final generation step (after all tool-calling, if any)
-
             max_tokens (int, optional): Maximum number of tokens to generate
 
             temperature (float, optional): Affects how likely the LLM is to select statistically less common tokens
@@ -112,7 +110,6 @@ class model_manager(toolcall_mixin):
             str: response chunks
         '''
         toolset = tools or self.toolset
-        # schema_str = json.dumps(json_schema)
         req_tools = self._resolve_tools(toolset)
         req_tool_spec = [ s for f, s in req_tools.values() ]
 
@@ -166,7 +163,7 @@ class model_manager(toolcall_mixin):
             if not req_tool_spec:
                 # This is the final call, with all tools removed, so just do a regular completion
                 # XXX: Interplay between tool use & schema is actually much trickier than it seems, at first
-                async for resp in self.iter_complete(messages, json_schema=json_schema, stream=stream, max_tokens=max_tokens,
+                async for resp in self.iter_complete(messages, stream=stream, max_tokens=max_tokens,
                                                 temperature=temperature):
                     yield resp
                 break
@@ -174,6 +171,7 @@ class model_manager(toolcall_mixin):
     async def complete(self, messages, stream=True, json_schema=None, max_tokens=128, temperature=0.1):
         '''
         Simple completion without tools. Returns just the response text.
+        If you want the full response object, use iter_complete directly
 
         Args:
             prompt (str or list): Text prompt or list of chat messages
@@ -185,22 +183,30 @@ class model_manager(toolcall_mixin):
 
         if isinstance(resp, str):
             return resp
-        # Extract text from response object
-        return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message']['content']
+        else:
+            # Extract text from response object
+            return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message']['content']
 
     async def complete_with_tools(self, messages, tools=None, stream=False, json_schema=None, max_trips=3,
                                     tool_choice=TOOL_CHOICE_AUTO, max_tokens=128, temperature=0.1):
         '''
-        Complete using specified tools. Returns full response object.
+        Complete using specified tools. Returns just the response text
+        If you want the full response object, use iter_complete_with_tools directly
 
         Args:
             prompt (str or list): Text prompt or list of chat messages
             tools (list): List of tool names or specs to make available
             **kwargs: Additional arguments passed to __call__
         '''
-        async for resp in self.iter_complete_with_tools(messages, tools=tools, stream=False, json_schema=json_schema,
+        async for resp in self.iter_complete_with_tools(messages, tools=tools, stream=False,
             max_trips=max_trips, tool_choice=tool_choice, max_tokens=max_tokens, temperature=temperature):
+            break
+
+        if isinstance(resp, str):
             return resp
+        else:
+            # Extract text from response object
+            return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message']['content']
 
     async def _completion_trip(self, messages, stream, req_tool_spec, max_tokens=128, temperature=0.1):
         # schema, tool_sysmsg = process_tool_sysmsg(req_tool_spec, self.logger, leadin=self.sysmsg_leadin)
@@ -218,7 +224,9 @@ class model_manager(toolcall_mixin):
             yield resp
 
     async def _do_completion(self, messages, schema, responder, cache_prompt=False, max_tokens=128, temperature=0.1):
-        'Actually trigger the low-level sampling'
+        '''
+        Actually trigger the low-level sampling, yielding response chunks
+        '''
         prompt_tokens = None
         # print(f'🧰 Tool {schema=}\n{sysmsg=}', file=sys.stderr)
         for result in self.model.completion(messages, schema, max_tokens=max_tokens, temp=temperature,
@@ -251,37 +259,31 @@ class local_model_runner(model_manager):
     async def __call__(self, prompt, tools=None, json_schema=None, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
                        max_tokens=128, temperature=0.1):
         '''
-        Complete a prompt, optionally using tools or schema constraints.
-
-        Args:
-            messages (List[str]) - Prompt in the form of list of messages to send ot the LLM for completion.
-                If you have a system prompt, and you are setting up to call tools, it will be updated with
-                the tool spec
-
-            json_schema (dict or str) - JSON schema to be used to structure the generated response.
-                If given a a string, it will be decoded as JSON
-
-            max_tokens (int, optional): Maximum number of tokens to generate
-
-            temperature (float, optional): Affects how likely the LLM is to select statistically less common tokens
+        Convenience interface to complete a prompt, optionally using tools or schema constraints
+        Returns just the response text
+        If you want the full response object, use iter_complete* methods directly
 
         Args:
             prompt (str or list): Text prompt or list of chat messages
-            tools (list, optional): List of tool names or specs to make available
-            json_schema (dict, optional): Schema to constrain the response
+            tools (list, optional): List of tool names or specs to make available; mutually exclusive with json_schema
+            json_schema (dict, optional): JSON schema to constrain the response; mutually exclusive with tools
+                If given a a string, it will be decoded as JSON
             max_trips (int): Maximum number of tool-calling round trips
             tool_choice (str): How tools should be selected ('auto', 'none', etc)
             max_tokens (int): Maximum tokens to generate per completion
-            temperature (float): Sampling temperature
+            temperature (float): Sampling temperature; Affects how likely the LLM is to select statistically less common tokens
 
         Returns:
             Response text if no tools used, otherwise the full response object
         '''
+        if tools and json_schema:
+            raise ValueError('Cannot specify both tools and a JSON schema')
+
         # Convert string prompt to chat messages if needed
         messages = prompt if isinstance(prompt, list) else [{'role': 'user', 'content': prompt}]
 
         if tools:
-            async for resp in self.iter_complete_with_tools(messages, tools=tools, stream=False, json_schema=json_schema,
+            async for resp in self.iter_complete_with_tools(messages, tools=tools, stream=False,
                 max_trips=max_trips, tool_choice=tool_choice, max_tokens=max_tokens, temperature=temperature):
                 return resp
         else:

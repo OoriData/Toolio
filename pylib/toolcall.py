@@ -9,7 +9,7 @@ import warnings
 
 from toolio.http_schematics import V1Function
 
-from toolio.common import prompt_handler, LANG, model_flag, DEFAULT_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT
+from toolio.common import model_runner_base, LANG, model_flag, DEFAULT_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT
 from toolio.util import check_callable
 from toolio.http_schematics import V1ChatMessage
 
@@ -36,7 +36,7 @@ TOOLIO_FINAL_RESPONSE_TOOL = {
 DEFAULT_INTERNAL_TOOLS = (TOOLIO_BYPASS_TOOL, TOOLIO_FINAL_RESPONSE_TOOL)
 
 
-class mixin(prompt_handler):
+class mixin(model_runner_base):
     '''
     Encapsulates tool registry. Remember that tool-calling occurs on the client side.
     '''
