@@ -6,8 +6,7 @@ https://openai.com/index/introducing-structured-outputs-in-the-api/
 '''
 
 import asyncio
-from toolio.llm_helper import model_manager
-from toolio.common import response_text
+from toolio.llm_helper import local_model_runner
 
 SCHEMA = '''\
 {
@@ -38,13 +37,13 @@ SCHEMA = '''\
 }
 '''
 
-# toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
-toolio_mm = model_manager('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
+# toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+toolio_mm = local_model_runner('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
 
 async def tutor_main(tmm):
     prompt = ('solve 8x + 31 = 2. Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#')
     msgs = [{'role': 'user', 'content': prompt.format(json_schema=SCHEMA)}]
-    rt = await response_text(tmm.complete(msgs, json_schema=SCHEMA, max_tokens=512))
+    rt = await tmm.complete(msgs, json_schema=SCHEMA, max_tokens=512)
     print(rt)
 
     # async for chunk in extract_content(tmm.complete(msgs, json_schema=SCHEMA, max_tokens=512)):

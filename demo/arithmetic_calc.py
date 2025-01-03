@@ -6,11 +6,11 @@ https://llama-cpp-agent.readthedocs.io/en/latest/parallel_function_calling/
 '''
 
 import asyncio
-from enum import Enum, auto
+from enum import Enum
 
 from toolio.tool import tool, param
-from toolio.llm_helper import model_manager
-from toolio.common import response_text
+from toolio.llm_helper import local_model_runner
+# from toolio.common import response_text
 
 
 class arithmetic_op(Enum):
@@ -46,14 +46,14 @@ async def arithmetic_calc(num1=0, num2=0, op=None):
 # MLX_MODEL_PATH = 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'
 MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
 
-toolio_mm = model_manager(MLX_MODEL_PATH, tool_reg=[arithmetic_calc])
+toolio_mm = local_model_runner(MLX_MODEL_PATH, tool_reg=[arithmetic_calc])
 
 # Use this to try parallel function calling
 # PROMPT = 'Solve the following calculations: 42 * 42, 24 * 24, 5 * 5, 89 * 75, 42 * 46, 69 * 85, 422 * 420, 753 * 321, 72 * 55, 240 * 204, 789 * 654, 123 * 321, 432 * 89, 564 * 321?'  # noqa: E501
 PROMPT = 'Solve the following calculation: 4242 * 2424.2'
 async def async_main(tmm):
     msgs = [ {'role': 'user', 'content': PROMPT} ]
-    rt = await response_text(tmm.complete_with_tools(msgs))
+    rt = await tmm.complete_with_tools(msgs)
     print(rt)
 
 asyncio.run(async_main(toolio_mm))

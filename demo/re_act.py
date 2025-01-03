@@ -5,17 +5,15 @@ ReAct Prompt Pattern demo: https://www.promptingguide.ai/techniques/react
 '''
 import json
 import asyncio
-from toolio.llm_helper import model_manager
-from toolio.common import response_text
+from toolio.llm_helper import local_model_runner
 
 # Note: the pseudo-toolcalling spec in here is intentionally dumbed down
 SCHEMA = '''\
 {
   "type": "object",
-  "required": ["step-type"],
   "anyOf": [
-    {"required" : ["content"]},
-    {"required" : ["action"]}
+    {"required" : ["content", "step-type"]},
+    {"required" : ["action", "step-type", "content"]}
   ],
   "properties": {
     "step-type": {
@@ -42,11 +40,11 @@ SCHEMA = '''\
 }
 '''
 
-# toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
-toolio_mm = model_manager('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
+# toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+toolio_mm = local_model_runner('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
 
 USER_QUESTION = '''\
-Give me a picture of the biggest export from the copuntry who most recently won the World Cup.
+Give me a picture of the biggest export from the country who most recently won the World Cup.
 '''
 
 AVAILABLE_TOOLS = '''\
@@ -87,7 +85,7 @@ def handle_action(text):
     'Worst tool-caller ever 😅'
     print(f'TOOL CALL: {text}')
     ltext = text.lower()
-    if 'which country' in ltext:
+    if 'winner' in ltext or 'world cup' in ltext or 'won' in ltext:
         return 'Argentina won the most recent World Cup'
     elif 'draw' in ltext or 'image' in ltext:
         return 'Image available at https://gimmemyjpg.net'
@@ -100,13 +98,15 @@ async def react_demo(tmm):
     done = False
     msgs = [{'role': 'user', 'content': prompt}]
     while not done:
-        rt = await response_text(tmm.complete(msgs, json_schema=SCHEMA, max_tokens=512))
+        rt = await tmm.complete(msgs, json_schema=SCHEMA, max_tokens=512)
         obj = json.loads(rt)
+        # print('DEBUG return object:', obj)
         if obj['step-type'] == 'thought':
             content = obj['content']
             msgs.append({'role': 'assistant', 'content': content})
             msgs.append({'role': 'user', 'content': 'What\'s the next step?'})
         elif obj['step-type'] == 'action':
+            content = obj['content']
             result = handle_action(obj['action']['query'])
             msgs.append({'role': 'assistant', 'content': content})
             msgs.append({'role': 'user', 'content': f'Action result: {result}'})

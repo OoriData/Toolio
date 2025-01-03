@@ -51,7 +51,7 @@ from utiloori.ansi_color import ansi_color
 from ogbujipt.llm_wrapper import openai_chat_api, prompt_to_chat
 
 # from toolio.tool import tool
-from toolio.llm_helper import model_manager
+from toolio.llm_helper import local_model_runner
 from toolio.common import response_text
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Shut up Tokenizers lib warning
@@ -130,7 +130,7 @@ forums. Try to make it more than just a random list of topics, and more a readab
 Where possible, cite your sources using the Reddit links.
 '''
 
-toolio_mm = model_manager(MLX_MODEL_PATH)
+toolio_mm = local_model_runner(MLX_MODEL_PATH)
 
 # System prompt will be used to direct the LLM's tool-calling
 agent_1_sysprompt = '''\
@@ -181,7 +181,7 @@ async def gather_reddit(topics, all_subreddits):
     # Type maniac linters get on my nerves 🤬
     msgs = [ {'role': 'system', 'content': agent_2_sysprompt},
              {'role': 'user', 'content': agent_2_uprompt.format(topics='\n* '.join(topics), subreddits=all_subreddits)} ]  # pyright: ignore[reportCallIssue, reportArgumentType] noqa: 501
-    resp = await response_text(toolio_mm.complete(msgs, json_schema=AGENT_2_SCHEMA, max_tokens=2048))
+    resp = await toolio_mm.complete(msgs, json_schema=AGENT_2_SCHEMA, max_tokens=2048)
     subreddits = json.loads(resp)
     subreddits = subreddits[:MAX_SUBREDDITS]
     # print(resp)
@@ -220,7 +220,7 @@ async def async_main():
     interview_finished = False
     ready = None
     while not interview_finished:
-        resp = await response_text(toolio_mm.complete(msgs, json_schema=AGENT_1_SCHEMA, max_tokens=2048))
+        resp = await toolio_mm.complete(msgs, json_schema=AGENT_1_SCHEMA, max_tokens=2048)
         resp = json.loads(resp)
         # print(resp)
         question = resp.get('question')
@@ -251,7 +251,7 @@ async def async_main():
     msgs = [ {'role': 'user', 'content': uprompt} ]
     done, _ = await asyncio.wait((
         asyncio.create_task(console_throbber()),
-        asyncio.create_task(response_text(toolio_mm.complete(msgs, max_tokens=4096)))),
+        asyncio.create_task(toolio_mm.complete(msgs, max_tokens=4096))),
             return_when=asyncio.FIRST_COMPLETED)
 
     resp = list(done)[0].result()

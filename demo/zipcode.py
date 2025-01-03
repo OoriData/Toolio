@@ -32,8 +32,7 @@ Cuts off for max length, but we've accomplished what we wanted. Well, except tha
 '''
 import asyncio
 from toolio.tool import tool, param
-from toolio.llm_helper import model_manager
-from toolio.common import response_text
+from toolio.llm_helper import local_model_runner
 
 import httpx
 
@@ -55,12 +54,12 @@ async def zip_code_info(code=None):
 # MLX_MODEL_PATH = 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'
 MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
 
-toolio_mm = model_manager(MLX_MODEL_PATH, tool_reg=[zip_code_info])
+toolio_mm = local_model_runner(MLX_MODEL_PATH, tool_reg=[zip_code_info])
 
 PROMPT = 'Tell me something about life in zip code 80027'
 async def async_main(tmm):
     msgs = [ {'role': 'user', 'content': PROMPT} ]
-    rt = await response_text(tmm.complete_with_tools(msgs))
+    rt = await tmm.complete_with_tools(msgs)
     print(rt)
 
 asyncio.run(async_main(toolio_mm))

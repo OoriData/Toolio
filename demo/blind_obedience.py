@@ -9,8 +9,8 @@ what the LLM's inherent tendencies might suggest.
 import asyncio
 
 from toolio.tool import tool
-from toolio.llm_helper import model_manager
-from toolio.common import response_text
+from toolio.llm_helper import local_model_runner
+# from toolio.common import response_text
 
 
 @tool('sky_color')
@@ -28,7 +28,7 @@ async def indoor_or_outdoor():
 # MLX_MODEL_PATH = 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'
 MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
 
-toolio_mm = model_manager(MLX_MODEL_PATH, tool_reg=[sky_color, indoor_or_outdoor])
+toolio_mm = local_model_runner(MLX_MODEL_PATH, tool_reg=[sky_color, indoor_or_outdoor])
 
 # System prompt will be used to direct the LLM's tool-calling
 sysprompt = '''\
@@ -47,7 +47,7 @@ async def async_main(tmm):
       {'role': 'system', 'content': sysprompt},
       {'role': 'user', 'content': userprompt}
       ]
-    rt = await response_text(tmm.complete_with_tools(msgs))
+    rt = await tmm.complete_with_tools(msgs)
     print(rt)
 
 asyncio.run(async_main(toolio_mm))
