@@ -90,7 +90,7 @@ class Model:
             tokens = prompt
             # print('UNCACHED', tokens)
 
-        logits = self.model(mx.array(tokens)[None], cache)
+        logits = self.model(mx.array(tokens)[None], cache=cache)
         return logits, cache
 
     def _decode(self, tokens):
@@ -142,7 +142,7 @@ class Model:
             yield tokens
             if tokens[-1] == self.eos_id:
                 break
-            logits = self.model(mx.array(tokens)[None], cache)
+            logits = self.model(mx.array(tokens)[None], cache=cache)
 
     def generate_with_schema(
         self, logits, cache, token_acceptor, temp: Optional[float] = 0.0
@@ -152,7 +152,7 @@ class Model:
             yield tokens
             if tokens[-1] == self.eos_id:
                 break
-            logits = self.model(mx.array(tokens)[None], cache)
+            logits = self.model(mx.array(tokens)[None], cache=cache)
 
     def generate_with_preemptive_decoding(
         self,
@@ -201,7 +201,7 @@ class Model:
             else:  # Otherwise, submit the normal one-token continuation.
                 batch = [[last_token]]
 
-            logits = self.model(mx.array(batch), cache)
+            logits = self.model(mx.array(batch), cache=cache)
             mx.eval(logits)
 
             first_token_logits = bias_logits(mx, logits[0, 0, :], accepted_token_bitmap)
