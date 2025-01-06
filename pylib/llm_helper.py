@@ -5,6 +5,7 @@
 
 import json
 import logging
+import warnings
 
 from toolio.common import extract_content, DEFAULT_JSON_SCHEMA_CUTOUT  # Just really for legacy import patterns # noqa: F401
 from toolio.toolcall import mixin as toolcall_mixin, process_tools_for_sysmsg, TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS
@@ -115,8 +116,8 @@ class model_manager(toolcall_mixin):
 
         if max_trips < 1:
             raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
+        final_resp = None
         while max_trips:
-            first_chunk = True
             tool_call_resp = None
             # {'choices': [{'index': 0, 'message': {'role': 'assistant',
             # 'tool_calls': [{'id': 'call_6434200784_1722311129_0', 'type': 'function',
@@ -125,48 +126,60 @@ class model_manager(toolcall_mixin):
             # 'object': 'chat.completion', 'id': 'chatcmpl-6434200784_1722311129', 'created': 1722311129,
             # 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'}
             first_resp = None
+
+            if not req_tool_spec:
+                # No tools (presumably all removed in prior loops), so just do a regular completion
+                async for resp in self.iter_complete(messages, stream=stream, max_tokens=max_tokens,
+                                                temperature=temperature):
+                    if first_resp is None: first_resp = resp  # noqa E701
+                    yield resp
+                assert first_resp is not None, 'No response from LLM'
+                break
+
             async for resp in self._completion_trip(messages, stream, req_tool_spec, max_tokens=max_tokens,
                                                     temperature=temperature):
-                if first_resp is None:
-                    first_resp = resp
-                resp_msg = resp['choices'][0]['message']
+                if first_resp is None: first_resp = resp  # noqa E701
+                resp_msg = resp['choices'][0].get('message')
                 # resp_msg can be None e.g. if generation finishes due to length
                 if resp_msg:
-                    if first_chunk and 'tool_calls' in resp_msg:
-                    # if first_chunk and 'tool_calls' in resp['choices'][0]['delta']:
-                        tool_call_resp = resp
+                    if 'tool_calls' in resp_msg:
+                        max_trips -= 1
+                        bypass_response = self._check_tool_handling_bypass(first_resp)
+                        if bypass_response:
+                            # LLM called an internal tool either as a bypass, or for finishing up; treat as direct response
+                            final_resp = bypass_response
+                            break
+
+                        if max_trips <= 0:
+                            # No more available trips; don't bother calling tools
+                            warnings.warn('Maximum LLM trips exhausted without a final answer')
+                            final_resp = resp
+                            break
+
+                        called_names = await self._handle_tool_responses(messages, first_resp, req_tools, req_tool_spec)
+
+                        # Possibly move into _handle_tool_responses? If so, same in llm_helper.py
+                        if self._remove_used_tools:
+                            # Many FLOSS LLMs get confused if they see a tool definition still in the response back
+                            # And loop back with a new tool request. Remove it to avoid this.
+                            req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
+                            req_tool_spec = [s for f, s in req_tools.values()]
+                        break
                     else:
                         assert 'delta' in resp['choices'][0]
                         yield resp
-                first_chunk = False
 
-            if tool_call_resp:
-                max_trips -= 1
-                bypass_response = self._check_tool_handling_bypass(first_resp)
-                if bypass_response:
-                    # LLM called an internal tool either as a bypass, or for finishing up; treat as direct response
-                    yield bypass_response
-                    break
+                # if resp['choices'][0]['finish_reason'] == 'stop':
+                #     break
 
-                called_names = await self._handle_tool_responses(messages, first_resp, req_tools, req_tool_spec)
+            assert first_resp is not None, 'No response from LLM'
 
-                # Possibly move into _handle_tool_responses? If so, same in llm_helper.py
-                if self._remove_used_tools:
-                    # Many FLOSS LLMs get confused if they see a tool definition still in the response back
-                    # And loop back with a new tool request. Remove it to avoid this.
-                    req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
-                    req_tool_spec = [s for f, s in req_tools.values()]
-
-            else:
-                # No tools called, so no more trips
+            if final_resp is not None:
+                yield final_resp
                 break
-            if not req_tool_spec:
-                # This is the final call, with all tools removed, so just do a regular completion
-                # XXX: Interplay between tool use & schema is actually much trickier than it seems, at first
-                async for resp in self.iter_complete(messages, stream=stream, max_tokens=max_tokens,
-                                                temperature=temperature):
-                    yield resp
-                break
+
+        else:
+            yield resp
 
     async def complete(self, messages, stream=True, json_schema=None, max_tokens=128, temperature=0.1):
         '''
@@ -185,7 +198,7 @@ class model_manager(toolcall_mixin):
             return resp
         else:
             # Extract text from response object
-            return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message']['content']
+            return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message'].get('content')
 
     async def complete_with_tools(self, messages, tools=None, stream=False, json_schema=None, max_trips=3,
                                     tool_choice=TOOL_CHOICE_AUTO, max_tokens=128, temperature=0.1):
@@ -206,7 +219,7 @@ class model_manager(toolcall_mixin):
             return resp
         else:
             # Extract text from response object
-            return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message']['content']
+            return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message'].get('content')
 
     async def _completion_trip(self, messages, stream, req_tool_spec, max_tokens=128, temperature=0.1):
         # schema, tool_sysmsg = process_tool_sysmsg(req_tool_spec, self.logger, leadin=self.sysmsg_leadin)

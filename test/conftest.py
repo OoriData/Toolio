@@ -7,13 +7,15 @@ Common tools & resources (fixtures) for test cases
 # ruff: noqa: E501
 # Fixtures HOWTO: https://docs.pytest.org/en/latest/how-to/fixtures.html#how-to-fixtures
 
-from unittest.mock import Mock, patch
 from dataclasses import dataclass
+from unittest.mock import Mock, patch
 
 import pytest
 
-# from toolio.client import struct_mlx_chat_api, response_type
-from toolio.client import response_type
+from ogbujipt.llm_wrapper import response_type
+
+from toolio.tool.schematics import tool, param
+
 
 @dataclass
 class session:
@@ -21,18 +23,18 @@ class session:
     label: str
     req_messages: list
     resp_json: dict | None
-    resp_type: response_type
+    resp_type: response_type = response_type.MESSAGE
     intermed_resp_jsons: list = None
     req_schema: dict = None
     req_tools: dict = None
     resp_text: str = None
     max_trips: int = 3
 
+
 @pytest.fixture()
 def session_cls():
     return session
 
-from toolio.tool.schematics import tool, param
 
 @pytest.fixture
 def sample_tool():
