@@ -42,7 +42,8 @@ class model_manager(toolcall_mixin):
                          sysmsg_leadin=sysmsg_leadin, remove_used_tools=remove_used_tools,
                          default_schema=default_schema, json_schema_cutout=json_schema_cutout)
 
-    async def iter_complete(self, messages, stream=True, json_schema=None, max_tokens=128, temperature=0.1):
+    async def iter_complete(self, messages, stream=True, json_schema=None, max_tokens=128, temperature=0.1,
+                            insert_schema=True):
         '''
         Invoke the LLM with a completion request
 
@@ -57,6 +58,7 @@ class model_manager(toolcall_mixin):
             max_tokens (int, optional): Maximum number of tokens to generate
 
             temperature (float, optional): Affects how likely the LLM is to select statistically less common tokens
+            insert_schema (bool, optional): Whether or not to insert JSON schema into prompt (True by default)
         Yields:
             str: response chunks
         '''
@@ -75,8 +77,7 @@ class model_manager(toolcall_mixin):
             schema, schema_str = json.loads(json_schema), json_schema
         else:
             raise ValueError(f'Invalid JSON schema: {json_schema}')
-
-        if schema:
+        if schema and insert_schema:
             self.replace_cutout(messages, schema_str)
 
         # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
@@ -89,7 +90,8 @@ class model_manager(toolcall_mixin):
     # async def complete_with_tools(self, messages, tools, stream=True, max_trips=3, tool_choice=None,
     #                               max_tokens=128, temperature=0.1):
     async def iter_complete_with_tools(self, messages, tools=None, stream=False, max_trips=3,
-                                        tool_choice=TOOL_CHOICE_AUTO, max_tokens=128, temperature=0.1):
+                                       tool_choice=TOOL_CHOICE_AUTO, max_tokens=128, temperature=0.1,
+                                       insert_schema=True):
         '''
         Make a chat completion with tools, then continue to iterate completions as long as the LLM
         is using at least one tool, or until max_trips are exhausted
@@ -130,7 +132,7 @@ class model_manager(toolcall_mixin):
             if not req_tool_spec:
                 # No tools (presumably all removed in prior loops), so just do a regular completion
                 async for resp in self.iter_complete(messages, stream=stream, max_tokens=max_tokens,
-                                                temperature=temperature):
+                                                     temperature=temperature, insert_schema=insert_schema):
                     if first_resp is None: first_resp = resp  # noqa E701
                     yield resp
                 assert first_resp is not None, 'No response from LLM'
@@ -270,7 +272,7 @@ class local_model_runner(model_manager):
         resp = await runner('What is 2 + 2?', tools=['calculator'])
     '''
     async def __call__(self, prompt, tools=None, json_schema=None, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
-                       max_tokens=128, temperature=0.1):
+                       max_tokens=128, temperature=0.1, insert_schema=True):
         '''
         Convenience interface to complete a prompt, optionally using tools or schema constraints
         Returns just the response text
@@ -285,6 +287,7 @@ class local_model_runner(model_manager):
             tool_choice (str): How tools should be selected ('auto', 'none', etc)
             max_tokens (int): Maximum tokens to generate per completion
             temperature (float): Sampling temperature; Affects how likely the LLM is to select statistically less common tokens
+            insert_schema (bool): Whether or not to insert JSON schema into prompt (True by default)
 
         Returns:
             Response text if no tools used, otherwise the full response object
@@ -296,8 +299,9 @@ class local_model_runner(model_manager):
         messages = prompt if isinstance(prompt, list) else [{'role': 'user', 'content': prompt}]
 
         if tools:
-            async for resp in self.iter_complete_with_tools(messages, tools=tools, stream=False,
-                max_trips=max_trips, tool_choice=tool_choice, max_tokens=max_tokens, temperature=temperature):
+            async for resp in self.iter_complete_with_tools(messages, tools=tools, stream=False, max_trips=max_trips,
+                                                            tool_choice=tool_choice, max_tokens=max_tokens,
+                                                            temperature=temperature, insert_schema=insert_schema):
                 return resp
         else:
             async for resp in self.iter_complete(messages, json_schema=json_schema, stream=False, max_tokens=max_tokens,
