@@ -120,7 +120,11 @@ class model_runner_base:
         if sysmsg:
             # Override any existing system messages by removing, then adding the one
             new_msgs = [m for m in msgs if m['role'] != 'system']
-            new_msgs.insert(0, {'role': 'system', 'content': sysmsg})
+            if model_flag.NO_SYSTEM_ROLE in self.model_flags:
+                new_msgs[0]['content'] = sysmsg + '\n\n' + new_msgs[0]['content']  # + is slow, but LLMs are slower 😉
+            else:
+                new_msgs.insert(0, {'role': 'system', 'content': sysmsg})
+
         else:
             new_msgs = msgs[:]
 
