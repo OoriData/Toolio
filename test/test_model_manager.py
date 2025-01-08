@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # test/test_model_manager.py
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import patch  # , Mock
 
 import pytest
 
@@ -13,6 +13,9 @@ from toolio.llm_helper import model_manager
 
 @pytest.mark.asyncio
 async def test_model_manager_completion(mock_model):
+    '''
+    Test the completion method of the model manager, which should return the final response from the model
+    '''
     mm = model_manager('test_path')
     mock_model.completion.return_value = iter([
         {'op': 'evaluatedPrompt', 'token_count': 2},
