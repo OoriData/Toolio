@@ -33,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import click
 import uvicorn
 
-from llm_structured_output.util.output import info, warning, debug
+from toolio.vendor.llm_structured_output.util.output import info, warning, debug
 
 from toolio.http_schematics import V1ChatCompletionsRequest
 from toolio.common import DEFAULT_FLAGS, FLAGS_LOOKUP

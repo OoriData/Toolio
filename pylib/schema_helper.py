@@ -19,14 +19,14 @@ import mlx.core as mx
 from mlx_lm.models.cache import KVCache
 from mlx_lm.utils import load
 
-from llm_structured_output import JsonSchemaAcceptorDriver
-from llm_structured_output.util.bitmap import (
+from toolio.vendor.llm_structured_output import JsonSchemaAcceptorDriver
+from toolio.vendor.llm_structured_output.util.bitmap import (
     bias_logits,
     count_set_bits,
     enumerate_set_bits,
 )
-from llm_structured_output.util.output import debug
-from llm_structured_output.util.tokenization import HuggingfaceTokenizerHelper
+from toolio.vendor.llm_structured_output.util.output import debug
+from toolio.vendor.llm_structured_output.util.tokenization import HuggingfaceTokenizerHelper
 
 
 class RejectedCompletion(Exception):
