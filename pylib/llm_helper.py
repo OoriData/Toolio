@@ -183,7 +183,8 @@ class model_manager(toolcall_mixin):
         else:
             yield resp
 
-    async def complete(self, messages, stream=True, json_schema=None, max_tokens=128, temperature=0.1):
+    async def complete(self, messages, stream=True, json_schema=None, max_tokens=128, temperature=0.1,
+                       insert_schema=True):
         '''
         Simple completion without tools. Returns just the response text.
         If you want the full response object, use iter_complete directly
@@ -193,7 +194,7 @@ class model_manager(toolcall_mixin):
             **kwargs: Additional arguments passed to __call__
         '''
         async for resp in self.iter_complete(messages, json_schema=json_schema, stream=False, max_tokens=max_tokens,
-            temperature=temperature):
+                                             temperature=temperature, insert_schema=insert_schema):
             break
 
         if isinstance(resp, str):
