@@ -15,7 +15,7 @@ from amara3 import iri
 
 # import mlx.core as mx
 # from mlx_lm.models import (gemma, gemma2, llama, phi, qwen, su_rope, minicpm, phi3, qwen2, gpt2,
-#                            mixtral, phi3small, qwen2_moe, cohere, gpt_bigcode, phixtral,
+#                            mixtral, phi3small, qwen2_moe, cohere, cohere2, gpt_bigcode, phixtral,
 #                            stablelm, dbrx, internlm2, openelm, plamo, starcoder2)
 
 # from mlx_lm.models import olmo  # Will say:: To run olmo install ai2-olmo: pip install ai2-olmo
@@ -32,6 +32,7 @@ class model_flag(Flag):
 DEFAULT_FLAGS = model_flag(0)
 
 # {model_class: flags}, defaults to DEFAULT_FLAGS
+# OK it seems as if model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT is the actual default!
 FLAGS_LOOKUP = {
     # Actually Llama seems to want asistant response rather than as tool
     # 'llama': model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT | model_flag.TOOL_RESPONSE,
@@ -41,6 +42,8 @@ FLAGS_LOOKUP = {
     'mixtral': model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT,
     'mistral': model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT,
     'qwen2': model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT,
+    'cohere': model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT,
+    'cohere2': model_flag.NO_SYSTEM_ROLE | model_flag.USER_ASSISTANT_ALT,
 }
 
 TOOLIO_MODEL_TYPE_FIELD = 'toolio.model_type'
@@ -50,7 +53,7 @@ DEFAULT_JSON_SCHEMA_CUTOUT = '#!JSON_SCHEMA!#'
 
 def load_or_connect(ref: str, **kwargs):
     '''
-    Sonvenience function to either load a module from a file or HuggingFace path,
+    Convenience function to either load a module from a file or HuggingFace path,
     or connect to a Toolio server, based on checking the provided reference string
 
     Parameters:
