@@ -8,7 +8,7 @@ Heart of the implementation for HTTP server request handling
 import json
 import warnings
 
-from llm_structured_output.util.output import info, debug
+from toolio.vendor.llm_structured_output.util.output import info, debug
 
 from toolio.common import prompt_handler
 from toolio.toolcall import DEFAULT_INTERNAL_TOOLS, process_tools_for_sysmsg

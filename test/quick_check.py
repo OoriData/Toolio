@@ -1,7 +1,9 @@
 '''
 python test/quick_check.py mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
-'''
 
+Requires: pip install google-re2
+'''
+# FIXME: Come up with example that doesn't require other external libs such as re2
 import sys
 import asyncio
 

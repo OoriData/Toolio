@@ -29,7 +29,6 @@ dependencies = [
   "mlx_lm>=0.20.6; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8' and platform_release >= '22.6.0'",
   # "mlx>=0.16.0;platform_version=='arm64'",
   # "mlx_lm>=0.16.0;platform_version=='arm64'",
-  "llm-structured-output>=0.0.19",
   "ogbujipt>=0.9.3",
   "fastapi>=0.115.3",
   "click",
