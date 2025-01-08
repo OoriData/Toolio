@@ -6,7 +6,7 @@ import sys
 import asyncio
 
 # from toolio.http_schematics import V1Function
-from toolio.llm_helper import model_manager, extract_content
+from toolio.llm_helper import model_manager
 from toolio.common import load_or_connect
 
 async def amain(mm):
@@ -83,7 +83,10 @@ from math import sqrt  # noqa: E402
 TOOLS = [(sqrt, SQUARE_ROOT_METADATA)]
 
 mm = load_or_connect(modelid, tool_reg=TOOLS)
-# print('Model type:', mm.model_type)
+if isinstance(mm, model_manager):
+    print('Model type:', mm.model_type)
+else:
+    print('HTTP remote model host')
 
 resp = asyncio.run(amain(mm))
 
