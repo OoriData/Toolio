@@ -36,7 +36,7 @@ class HuggingfaceTokenizerHelper:
                 f"{message['role']}: {message['content']}"
                 for message in prompt
             ))
-        return self.tokenizer.apply_chat_template(prompt)
+        return self.tokenizer.apply_chat_template(prompt, add_generation_prompt=True)
 
     def no_strip_decode(self, tokens):
         """
