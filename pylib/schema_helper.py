@@ -4,13 +4,9 @@
 # toolio.schema_helper
 '''
 JSON schema decoding with MLX
-
-Basically just a combo of:
-* https://github.com/otriscon/llm-structured-output/blob/main/src/examples/llm_schema.py
-* https://github.com/otriscon/llm-structured-output/blob/main/src/examples/reusable_kv_cache.py
 '''
-
 import time
+import functools
 from math import inf
 from operator import itemgetter
 from typing import Iterable, Optional, Union
@@ -133,22 +129,17 @@ class Model:
         token_acceptor.advance_token(token)
         return token
 
-    def generate_without_schema(self, logits, cache, temp: Optional[float] = 0.0):
-        '''
-        For testing / comparison purposes.
-        '''
-        while True:
-            tokens = [self._sample(logits[0, -1, :], temp)]
-            yield tokens
-            if tokens[-1] == self.eos_id:
-                break
-            logits = self.model(mx.array(tokens)[None], cache=cache)
-
     def generate_with_schema(
-        self, logits, cache, token_acceptor, temp: Optional[float] = 0.0
+        self, logits, cache, token_acceptor = None, temp: Optional[float] = 0.0
     ):
+        '''
+        Generate text with an optional JSON schema acceptor.
+        '''
+        sample = functools.partial(
+            self._sample_with_bias, temp=temp, token_acceptor=token_acceptor
+        )
         while True:
-            tokens = [self._sample_with_bias(logits[0, -1, :], temp, token_acceptor)]
+            tokens = [sample(logits[0, -1, :])]
             yield tokens
             if tokens[-1] == self.eos_id:
                 break
@@ -311,22 +302,19 @@ class Model:
             'prompt_tps': len(prompt_tokens) / (prompt_time / 1e9),
         }
 
-        if schema:
-            token_acceptor = self.get_driver_for_json_schema(schema, encapsulated)
-            if preemptive_batch_size > 0:
-                generator = self.generate_with_preemptive_decoding(
-                    logits,
-                    cache,
-                    token_acceptor,
-                    temp,
-                    max_batch_size=preemptive_batch_size,
-                )
-            else:
-                generator = self.generate_with_schema(
-                    logits, cache, token_acceptor, temp
-                )
+        token_acceptor = self.get_driver_for_json_schema(schema, encapsulated) if schema else None
+        if preemptive_batch_size > 0:
+            generator = self.generate_with_preemptive_decoding(
+                logits,
+                cache,
+                token_acceptor,
+                temp,
+                max_batch_size=preemptive_batch_size,
+            )
         else:
-            generator = self.generate_without_schema(logits, cache, temp)
+            generator = self.generate_with_schema(
+                logits, cache, token_acceptor, temp
+            )
 
         token_count = 0
         generation_time = 0
