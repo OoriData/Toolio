@@ -145,92 +145,6 @@ class Model:
                 break
             logits = self.model(mx.array(tokens)[None], cache=cache)
 
-    def generate_with_preemptive_decoding(
-        self,
-        logits,
-        cache,
-        token_acceptor,
-        temp: Optional[float] = 0.0,
-        max_batch_size=5,
-    ):
-        '''
-        Try to generate faster by precomputing two tokens at a time when possible.
-        If we know that the acceptor will only accept a small set of tokens after
-        the current one, we can evaluate a batch with one entry per possible
-        future token. Each entry in the batch contains the current token sampled,
-        which we have to evaluate anyway, and a second token corresponding to one
-        of the possible tokens that could be sampled from the output to the first
-        token. We get back logits for both tokens for each item in the batch: the
-        logits for the first token will be the same (as long as the model applies
-        a causal mask), and we can sample those logits to select from which of the
-        items in the batch we can select the second token.
-        In practice, this only seems to accelerate things for unquantized models.
-        '''
-        # Sample token from prompt evaluation
-        accepted_token_bitmap = token_acceptor.select_valid_tokens()
-        first_token_logits = bias_logits(mx, logits[0, -1, :], accepted_token_bitmap)
-        first_token = self._sample(first_token_logits, temp)
-        tokens = [first_token]
-        yield tokens
-        token_acceptor.advance_token(first_token)
-        accepted_token_bitmap = token_acceptor.select_valid_tokens()
-
-        while True:
-            last_token = tokens[-1]
-            if count_set_bits(accepted_token_bitmap) in range(1, max_batch_size + 1):
-                # If the number of possible follow-up tokens is small, submit for
-                # evaluation a batch of 2-token continuations.
-                batch = []
-                for followup_token in enumerate_set_bits(accepted_token_bitmap):
-                    batch.append([last_token, followup_token])
-                # Re-shape the cache to match the input.
-                for layer_cache in cache:
-                    layer_cache.keys = mx.concatenate([layer_cache.keys] * len(batch))
-                    layer_cache.values = mx.concatenate(
-                        [layer_cache.values] * len(batch)
-                    )
-            else:  # Otherwise, submit the normal one-token continuation.
-                batch = [[last_token]]
-
-            logits = self.model(mx.array(batch), cache=cache)
-            mx.eval(logits)
-
-            first_token_logits = bias_logits(mx, logits[0, 0, :], accepted_token_bitmap)
-            first_token = self._sample(first_token_logits, temp)
-            tokens = [first_token]
-
-            if first_token == self.eos_id:
-                yield tokens
-                break
-
-            token_acceptor.advance_token(first_token)
-            accepted_token_bitmap = token_acceptor.select_valid_tokens()
-            if not accepted_token_bitmap:
-                raise RejectedCompletion()
-
-            # If we had submitted 2-token continuations, we can decode a second token
-            if len(batch[0]) > 1:
-                index = next(  # Find which of the second tokens was selected
-                    i
-                    for i, batch_item in enumerate(batch)
-                    if batch_item[1] == first_token
-                )
-                second_token_logits = bias_logits(
-                    mx, logits[index, 1, :], accepted_token_bitmap
-                )
-                second_token = self._sample(second_token_logits, temp)
-                tokens.append(second_token)
-
-                token_acceptor.advance_token(second_token)
-                accepted_token_bitmap = token_acceptor.select_valid_tokens()
-
-                # Select the accepted generation in the cache, restoring it to batch dimension 1.
-                for layer_cache in cache:
-                    layer_cache.keys = layer_cache.keys.split([index, index + 1])[1]
-                    layer_cache.values = layer_cache.values.split([index, index + 1])[1]
-
-            yield tokens
-
     def _generate_tokens(
         self,
         generator: Iterable,
@@ -294,7 +208,6 @@ class Model:
         max_tokens: int = 1000,
         temp: float = 0.0,
         seed: int = None,
-        preemptive_batch_size: int = 0,
         cache_prompt: bool = False,
     ):
         if seed is not None:
@@ -320,18 +233,7 @@ class Model:
         }
 
         token_acceptor = self.get_driver_for_json_schema(schema, encapsulated) if schema else None
-        if preemptive_batch_size > 0:
-            generator = self.generate_with_preemptive_decoding(
-                logits,
-                cache,
-                token_acceptor,
-                temp,
-                max_batch_size=preemptive_batch_size,
-            )
-        else:
-            generator = self.generate_with_schema(
-                logits, cache, token_acceptor, temp
-            )
+        generator = self.generate_with_schema(logits, cache, token_acceptor, temp)
 
         token_count = 0
         generation_time = 0
