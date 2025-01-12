@@ -9,7 +9,7 @@ import time
 import functools
 from math import inf
 from operator import itemgetter
-from typing import Iterable, Optional, Union
+from typing import Iterable, Optional, Union, Callable, List, Any
 
 import mlx.core as mx
 from mlx_lm.models.cache import KVCache
@@ -268,6 +268,23 @@ class Model:
             start_time = time.time_ns()
 
         assert False
+
+    def generate_step_with_schema(
+            self,
+            prompt: mx.array,
+            schema: dict,
+            max_tokens: int = 256,
+            sampler: Optional[Callable[mx.array, mx.array]] = None,
+            logits_processors: Optional[List[Callable[[mx.array, mx.array], mx.array]]] = None,
+            max_kv_size: Optional[int] = None,
+            prompt_cache: Optional[Any] = None,
+            prefill_step_size: int = 512,
+            kv_bits: Optional[int] = None,
+            kv_group_size: int = 64,
+            quantized_kv_start: int = 0,
+            prompt_progress_callback: Optional[Callable] = None,
+    ):
+        pass
 
     def completion(
         self,
