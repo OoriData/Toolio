@@ -12,7 +12,7 @@ from operator import itemgetter
 from typing import Iterable, Optional, Union, Callable, List, Any
 
 import mlx.core as mx
-from mlx_lm.models.cache import KVCache
+from mlx_lm.models.cache import KVCache, _BaseCache
 from mlx_lm.utils import load
 
 from toolio.vendor.llm_structured_output import JsonSchemaAcceptorDriver
@@ -269,7 +269,7 @@ class Model:
 
         assert False
 
-    def generate_step_with_schema(
+    def stream_generate_with_schema(
             self,
             prompt: mx.array,
             schema: dict,
@@ -277,7 +277,7 @@ class Model:
             sampler: Optional[Callable[mx.array, mx.array]] = None,
             logits_processors: Optional[List[Callable[[mx.array, mx.array], mx.array]]] = None,
             max_kv_size: Optional[int] = None,
-            prompt_cache: Optional[Any] = None,
+            prompt_cache: Optional[_BaseCache] = None,
             prefill_step_size: int = 512,
             kv_bits: Optional[int] = None,
             kv_group_size: int = 64,
