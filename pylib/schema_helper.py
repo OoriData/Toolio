@@ -13,16 +13,27 @@ from typing import Iterable, Optional, Union, Callable, List, Any
 
 import mlx.core as mx
 from mlx_lm.models.cache import KVCache, _BaseCache
-from mlx_lm.utils import load
+from mlx_lm.models.cache import make_prompt_cache
+from mlx_lm.utils import load, stream_generate, GenerationResponse
 
 from toolio.vendor.llm_structured_output import JsonSchemaAcceptorDriver
-from toolio.vendor.llm_structured_output.util.bitmap import (
-    bias_logits,
-    count_set_bits,
-    enumerate_set_bits,
-)
+from toolio.vendor.llm_structured_output.util.bitmap import highest_bit_set, count_set_bits, bitmap_complement, enumerate_set_bits
 from toolio.vendor.llm_structured_output.util.output import debug
 from toolio.vendor.llm_structured_output.util.tokenization import HuggingfaceTokenizerHelper
+
+# Lower level MLX LLM processing kwargs & their defaults
+MLX_LM_GENERATE_KWARGS = {
+    'max_tokens': 1024,
+    'sampler': None,
+    'logits_processors': None,
+    'max_kv_size': None,
+    # 'prompt_cache': None,
+    'prefill_step_size': 512,
+    'kv_bits': None,
+    'kv_group_size': 64,
+    'quantized_kv_start': 0,
+    'prompt_progress_callback': None
+}
 
 
 class RejectedCompletion(Exception):
@@ -44,17 +55,16 @@ class Model:
         self.vocabulary = None
         self.eos_id = None
         self.json_schema_acceptor_driver_factory = None
-        self._cached_prompt = None
-        self._cached_cache = None
+        # Note: If for example the user loads a cache from a file, and we support prompt caching that way, they should not have to re-specify init params such as max_kv_size
+        # self._prompt_cache = make_prompt_cache(self.model, max_kv_size)
 
     def load(self, model_path: str):
         '''
         Load locally or download from Huggingface hub.
         '''
-        self.model, tokenizer = load(model_path)
-        self.tokenizer = HuggingfaceTokenizerHelper(tokenizer)
-        self.simple_tokenizer = tokenizer
-        self.vocabulary, self.eos_id = self.tokenizer.extract_vocabulary()
+        self.model, self.tokenizer = load(model_path)
+        tokenizer_helper = HuggingfaceTokenizerHelper(self.tokenizer)
+        self.vocabulary, self.eos_id = tokenizer_helper.extract_vocabulary()
         self.json_schema_acceptor_driver_factory = (
             JsonSchemaAcceptorDriver.driver_factory_for_model(
                 self.vocabulary, self.eos_id
@@ -101,13 +111,6 @@ class Model:
         ]
         debug('TOP TOKENS:', top_tokens)
 
-    def _sample(self, logits, temp: float = 0):
-        if temp == 0:
-            result = mx.argmax(logits, axis=-1)
-        else:
-            result = mx.random.categorical(logits * (1 / temp))
-        return result.item()
-
     def _sample_with_bias(
         self, logits, temp: float = 0, token_acceptor=None, lazy_bias: bool = True
     ):
@@ -122,137 +125,126 @@ class Model:
             except JsonSchemaAcceptorDriver.TokenRejected:
                 pass
 
+        # By select valid tokens they really mean create a bitmap masking out invalid tokens
         accepted_token_bitmap = token_acceptor.select_valid_tokens()
         if not accepted_token_bitmap:
             raise RejectedCompletion()
-        token = self._sample(bias_logits(mx, logits, accepted_token_bitmap), temp)
+        # token = self._sample(bias_logits(mx, logits, accepted_token_bitmap), temp)
         token_acceptor.advance_token(token)
         return token
 
-    def generate_with_schema(
-        self, logits, cache, token_acceptor = None, temp: Optional[float] = 0.0
-    ):
-        '''
-        Generate text with an optional JSON schema acceptor.
-        '''
-        sample = functools.partial(
-            self._sample_with_bias, temp=temp, token_acceptor=token_acceptor
-        )
-        while True:
-            tokens = [sample(logits[0, -1, :])]
-            yield tokens
-            if tokens[-1] == self.eos_id:
-                break
-            logits = self.model(mx.array(tokens)[None], cache=cache)
+    # def stream_generate_with_schema(
+    #     self,
+    #     prompt: mx.array,
+    #     max_tokens: int = 256,
+    #     temp: Optional[float] = 0.0,
+    #     sampler: Optional[Callable[mx.array, mx.array]] = None,
+    #     logits_processors: Optional[List[Callable[[mx.array, mx.array], mx.array]]] = None,
+    #     max_kv_size: Optional[int] = None,
+    #     # prompt_cache: Optional[_BaseCache] = None,
+    #     prefill_step_size: int = 512,
+    #     kv_bits: Optional[int] = None,
+    #     kv_group_size: int = 64,
+    #     quantized_kv_start: int = 0,
+    #     prompt_progress_callback: Optional[Callable] = None,
+    # ):
+    #     '''
+    #     Generate text with an optional JSON schema acceptor.
+    #     '''
+    #     logits_processors = logits_processors or []
+    #     logits_processors = logits_processors.copy()
+    #     logits_processors.append(self.make_logit_bias_processor())
 
-    def _generate_tokens(
-        self,
-        generator: Iterable,
-        max_tokens: int = 1000,
-    ) -> Iterable:
-        start_time = time.time_ns()
-        token_count = 0
+    #     sample = functools.partial(
+    #         self._sample_with_bias, temp=temp
+    #     )
+    #     while True:
+    #         tokens = [sample(logits[0, -1, :])]
+    #         yield tokens
+    #         if tokens[-1] == self.eos_id:
+    #             break
+    #         logits = self.model(mx.array(tokens)[None], cache=cache)
 
-        for tokens in generator:
-            token_count += len(tokens)
+    def make_logit_bias_processor(self) -> Callable[[mx.array, mx.array], mx.array]:
+        def logit_bias_processor(tokens: mx.array, logits: mx.array) -> mx.array:
+            '''
+            Apply a -inf bias to tokens that will not be accepted
+            '''
+            vocab_size = logits.shape[0]
+            highest_token_accepted = highest_bit_set(self.accepted_token_bitmap)
+            accepted_token_count = count_set_bits(self.accepted_token_bitmap)
+            # Check whether there's more tokens to be rejected or to be allowed, then do what's less work.
+            if accepted_token_count <= highest_token_accepted / 2:
+                bias = mx.full(vocab_size, -inf)
+                indices = mx.array([*enumerate_set_bits(self.accepted_token_bitmap)])
+                bias[indices] = 0
+            else:
+                bias = mx.concatenate(
+                    [
+                        mx.full(highest_token_accepted + 1, 0),
+                        # All tokens above the highest accepted token are rejected.
+                        mx.full(vocab_size - highest_token_accepted - 1, -inf),
+                    ]
+                )
+                rejected_token_bitmap = bitmap_complement(self.accepted_token_bitmap)
+                indices = mx.array([*enumerate_set_bits(rejected_token_bitmap)])
+                bias[indices] = -inf
+            return mx.add(logits, bias)
 
-            try:
-                eos_index = tokens.index(self.eos_id)
-                tokens = tokens[0:eos_index]
-            except ValueError:
-                eos_index = -1
-
-            if tokens:
-                text = self._decode(tokens)
-                yield {
-                    'op': 'generatedTokens',
-                    'text': text,
-                    'token_count': len(tokens),
-                    'time_ms': (time.time_ns() - start_time) / 1e6,
-                }
-
-            if eos_index >= 0:
-                yield {'op': 'stop', 'reason': 'end'}
-                return
-
-            if token_count >= max_tokens:
-                yield {'op': 'stop', 'reason': 'max_tokens'}
-                return
-
-            start_time = time.time_ns()
-
-        assert False
-
-    def stream_generate_with_schema(
-            self,
-            prompt: mx.array,
-            schema: dict,
-            max_tokens: int = 256,
-            sampler: Optional[Callable[mx.array, mx.array]] = None,
-            logits_processors: Optional[List[Callable[[mx.array, mx.array], mx.array]]] = None,
-            max_kv_size: Optional[int] = None,
-            prompt_cache: Optional[_BaseCache] = None,
-            prefill_step_size: int = 512,
-            kv_bits: Optional[int] = None,
-            kv_group_size: int = 64,
-            quantized_kv_start: int = 0,
-            prompt_progress_callback: Optional[Callable] = None,
-    ):
-        pass
+        return logit_bias_processor
 
     def completion(
         self,
-        prompt: Union[str, Iterable[dict[str, str]]],
+        messages: Union[str, Iterable[dict[str, str]]],
         schema: dict,
         encapsulated: bool = False,
-        max_tokens: int = 1000,
-        temp: float = 0.0,
         seed: int = None,
         cache_prompt: bool = False,
+        **kwargs,  # From MLX_LM_GENERATE_KWARGS
     ):
+        for k in kwargs:
+            if k not in MLX_LM_GENERATE_KWARGS:
+                raise ValueError(f'Unknown keyword argument: {k}')
+
+        logits_processors = kwargs.get('logits_processors', [])
+        logits_processors = logits_processors.copy()
+        logits_processors.append(self.make_logit_bias_processor())
+        kwargs['logits_processors'] = logits_processors
+
+        if self.tokenizer is None:  # Not loaded
+            raise RuntimeError('Model not loaded')
+
         if seed is not None:
             mx.random.seed(seed)
 
-        start_time = time.time_ns()
-        prompt_tokens = self.tokenizer.encode_prompt(prompt)
-        logits, cache = self._evaluate_prompt(
-            prompt_tokens, self._cached_prompt, self._cached_cache
-        )
-        if cache_prompt:
-            self._cached_prompt = prompt_tokens
-            self._cached_cache = cache
-        # Eager eval to more accurately reflect the prompt evaluation time.
-        mx.eval(logits)
-        prompt_time = time.time_ns() - start_time
-        yield {
-            'op': 'evaluatedPrompt',
-            'prompt': prompt,
-            'token_count': len(prompt_tokens),
-            'time_ms': prompt_time / 1e6,
-            'prompt_tps': len(prompt_tokens) / (prompt_time / 1e9),
-        }
+        prompt_tokens = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True)
 
-        token_acceptor = self.get_driver_for_json_schema(schema, encapsulated) if schema else None
-        generator = self.generate_with_schema(logits, cache, token_acceptor, temp)
+        # FIXME: Non-reentrant
+        self.curr_token_acceptor = self.get_driver_for_json_schema(schema, encapsulated) if schema else None
 
-        token_count = 0
-        generation_time = 0
-        for generation_result in self._generate_tokens(generator, max_tokens):
-            if generation_result['op'] == 'generatedTokens':
-                token_count += generation_result['token_count']
-                generation_time += generation_result['time_ms']
-            elif generation_result['op'] == 'stop':
-                generation_result['token_count'] = token_count
-                generation_result['time_ms'] = generation_time
-                if generation_time == 0.0:
-                    # Happens, believe it or not
-                    generation_result['generation_tps'] = float('inf')
-                else:
-                    # Slightly incorrect, because the first token is generated from the prompt evaluation
-                    generation_result['generation_tps'] = token_count / (
-                        generation_time / 1e3
-                    )
-            yield generation_result
+        logits_generator = stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs)
+
+        for generation_resp in logits_generator:
+            # generation_resp is a GenerationResponse object
+            # text (str): The next segment of decoded text. This can be an empty string.
+            # token (int): The next token.
+            # logprobs (mx.array): A vector of log probabilities.
+            # prompt_tokens (int): The number of tokens in the prompt.
+            # prompt_tps (float): The prompt processing tokens-per-second.
+            # generation_tokens (int): The number of generated tokens.
+            # generation_tps (float): The tokens-per-second for generation.
+            # peak_memory (float): The peak memory used so far in GB.
+            # finish_reason (str): The reason the response is being sent: "length", "stop" or `None`
+            try:
+                # By select valid tokens they really mean create a bitmap masking out invalid tokens
+                self.accepted_token_bitmap = self.curr_token_acceptor.select_valid_tokens()
+                if not self.accepted_token_bitmap:
+                    raise RejectedCompletion()
+
+                self.curr_token_acceptor.advance_token(generation_resp.token)
+                yield generation_resp.token
+            except JsonSchemaAcceptorDriver.TokenRejected:
+                pass
 
 
 class ReusableKVCache(KVCache):

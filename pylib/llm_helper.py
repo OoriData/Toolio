@@ -7,6 +7,8 @@ import json
 import logging
 import warnings
 
+from mlx_lm.sample_utils import make_sampler
+
 from toolio.common import extract_content, DEFAULT_JSON_SCHEMA_CUTOUT  # Just really for legacy import patterns # noqa: F401
 from toolio.toolcall import mixin as toolcall_mixin, process_tools_for_sysmsg, TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS
 from toolio.schema_helper import Model
@@ -42,8 +44,7 @@ class model_manager(toolcall_mixin):
                          sysmsg_leadin=sysmsg_leadin, remove_used_tools=remove_used_tools,
                          default_schema=default_schema, json_schema_cutout=json_schema_cutout)
 
-    async def iter_complete(self, messages, stream=True, json_schema=None, max_tokens=128, temperature=0.1,
-                            insert_schema=True):
+    async def iter_complete(self, messages, stream=True, json_schema=None, temperature=None, insert_schema=True, **kwargs):
         '''
         Invoke the LLM with a completion request
 
@@ -80,18 +81,21 @@ class model_manager(toolcall_mixin):
         if schema and insert_schema:
             self.replace_cutout(messages, schema_str)
 
+        if temperature is not None:
+            assert 'sampler' not in kwargs
+            kwargs['sampler'] = make_sampler(temp=temperature)
+
         # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
         cache_prompt = False
-        async for resp in self._do_completion(messages, schema, responder, cache_prompt=cache_prompt,
-                                                max_tokens=max_tokens, temperature=temperature):
+        async for resp in self._do_completion(messages, schema, responder, cache_prompt=cache_prompt, **kwargs):
             yield resp
 
     # Seems streaming is not quite yet working
     # async def complete_with_tools(self, messages, tools, stream=True, max_trips=3, tool_choice=None,
     #                               max_tokens=128, temperature=0.1):
     async def iter_complete_with_tools(self, messages, tools=None, stream=False, max_trips=3,
-                                       tool_choice=TOOL_CHOICE_AUTO, max_tokens=128, temperature=0.1,
-                                       insert_schema=True):
+                                       tool_choice=TOOL_CHOICE_AUTO, temperature=None,
+                                       insert_schema=True, **kwargs):
         '''
         Make a chat completion with tools, then continue to iterate completions as long as the LLM
         is using at least one tool, or until max_trips are exhausted
@@ -115,6 +119,10 @@ class model_manager(toolcall_mixin):
         toolset = tools or self.toolset
         req_tools = self._resolve_tools(toolset)
         req_tool_spec = [ s for f, s in req_tools.values() ]
+
+        if temperature is not None:
+            assert 'sampler' not in kwargs
+            kwargs['sampler'] = make_sampler(temp=temperature)
 
         if max_trips < 1:
             raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
@@ -235,18 +243,16 @@ class model_manager(toolcall_mixin):
         messages = self.reconstruct_messages(messages, sysmsg=sysmsg)
         # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
         cache_prompt=False
-        async for resp in self._do_completion(messages, full_schema, responder, cache_prompt=cache_prompt,
-                                                max_tokens=max_tokens, temperature=temperature):
+        async for resp in self._do_completion(messages, full_schema, responder, cache_prompt=cache_prompt, **kwargs):
             yield resp
 
-    async def _do_completion(self, messages, schema, responder, cache_prompt=False, max_tokens=128, temperature=0.1):
+    async def _do_completion(self, messages, schema, responder, cache_prompt=False, **kwargs):
         '''
         Actually trigger the low-level sampling, yielding response chunks
         '''
         prompt_tokens = None
         # print(f'🧰 Tool {schema=}\n{sysmsg=}', file=sys.stderr)
-        for result in self.model.completion(messages, schema, max_tokens=max_tokens, temp=temperature,
-                                            cache_prompt=cache_prompt):
+        for result in self.model.completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
             if result['op'] == 'evaluatedPrompt':
                 prompt_tokens = result['token_count']
             elif result['op'] == 'generatedTokens':
@@ -348,7 +354,7 @@ class debug_model_manager(model_manager):
 
         for trip in self._trip_log:
             # Tokenize chat messages
-            trip['tokenized_prompt'] = self.model.simple_tokenizer.apply_chat_template(trip['messages'], tokenize=False)
+            trip['tokenized_prompt'] = self.model.tokenizer.apply_chat_template(trip['messages'], tokenize=False)
             # JSONize schema
             trip['schema.json'] = json.dumps(trip['schema'], indent=2)
 
