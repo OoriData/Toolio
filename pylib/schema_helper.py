@@ -71,11 +71,6 @@ class Model:
             )
         )
 
-    def get_driver_for_json_schema(self, schema, encapsulated: bool = False):
-        return self.json_schema_acceptor_driver_factory(
-            schema, is_encapsulated_json=encapsulated
-        )
-
     def _evaluate_prompt(
         self, prompt: list[int], prior_prompt: list[int] = None, prior_cache=None
     ):
@@ -220,7 +215,7 @@ class Model:
         prompt_tokens = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True)
 
         # FIXME: Non-reentrant
-        self.curr_token_acceptor = self.get_driver_for_json_schema(schema, encapsulated) if schema else None
+        self.curr_token_acceptor = self.json_schema_acceptor_driver_factory(schema, encapsulated) if schema else None
 
         logits_generator = stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs)
 

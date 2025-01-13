@@ -225,7 +225,7 @@ class ToolCallStreamingResponder(ToolCallResponder):
                 'type': 'array',
                 'items': {'anyOf': hooked_function_schemas},
             }
-        self.tool_call_parser = model.get_driver_for_json_schema(hooked_schema)
+        self.tool_call_parser = model.json_schema_acceptor_driver_factory(hooked_schema, False)
 
     def generated_tokens(
         self,
