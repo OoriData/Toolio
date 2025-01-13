@@ -18,6 +18,8 @@ In either case you get better results if you've trained or fine-tuned the model 
 
 ## Specific components and usage modes
 
+**Warnng: this README has been (prematurely) updated to reflect the forthcoming 0.6.0 release. If you're working with the current 0.5.2 relase, refer to [this earlier version of the README](https://github.com/OoriData/Toolio/tree/v0.5.2), or to [the documentation](https://www.oori.dev/Toolio/).**
+
 * `toolio_server` (command line)—Host MLX-format LLMs for structured output query or function calling via HTTP requests
 * `toolio_request` (command line)—Execute HTTP client requests against a server
 * `toolio.local_model_runner` (Python API)—Encapsulate an MLX-format LLM for convenient, in-resident query with structured output or function calling
