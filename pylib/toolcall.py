@@ -13,7 +13,7 @@ from time import time_ns
 from toolio.response_helper import llm_response, llm_response_type
 from toolio.http_schematics import V1Function
 
-from toolio.common import model_runner_base, LANG, model_flag, DEFAULT_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT
+from toolio.common import llm_response_type, model_runner_base, LANG, model_flag, DEFAULT_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT
 from toolio.util import check_callable
 from toolio.http_schematics import V1ChatMessage
 
@@ -372,12 +372,6 @@ def process_tools_for_sysmsg(tools, internal_tools, separator='\n', **kwargs):
     return full_schema, tool_schemas, sysprompt
 
 
-class tool_call_response_type(llm_response_type):
-    '''Extended response types for tool calling'''
-    TOOL_CALL = 'tool_call'       
-    TOOL_RESULT = 'tool_result'   
-
-
 @dataclass
 class tool_call:
     '''Single tool invocation request from LLM'''
@@ -445,7 +439,7 @@ class tool_call_response(llm_response):
     '''
     def __init__(
         self,
-        response_type: tool_call_response_type,
+        response_type: llm_response_type,
         choices: List[dict],
         tool_calls: Optional[List[tool_call]] = None,
         tool_results: Optional[List[Any]] = None,
@@ -552,7 +546,7 @@ class tool_call_response(llm_response):
                     }]
 
                     return cls(
-                        response_type=tool_call_response_type.TOOL_CALL,
+                        response_type=llm_response_type.TOOL_CALL,
                         choices=choices,
                         tool_calls=tool_calls,
                         object='chat.completion',
@@ -590,7 +584,7 @@ class tool_call_response(llm_response):
         }]
 
         return cls(
-            response_type=tool_call_response_type.TOOL_RESULT,
+            response_type=llm_response_type.TOOL_RESULT,
             choices=choices,
             tool_results=[result],
             object='chat.completion',

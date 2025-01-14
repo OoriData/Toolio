@@ -8,7 +8,7 @@ Converting GenerationResponse objects to higher-level data pattrns, including as
 Example usage:
 
 ```python
-resp = LLMResponse.from_generation_response(
+resp = llm_response.from_generation_response(
     generation_response,
     model_name='local/model/path',
     model_type='llama'
@@ -24,19 +24,12 @@ resp_json = resp.to_json()
 '''
 import time
 import json
-from enum import Enum
 from dataclasses import dataclass
 
 # from ogbujipt.config import attr_dict
 from ogbujipt.llm_wrapper import response_type
 
-from toolio.common import TOOLIO_MODEL_TYPE_FIELD
-
-# XXX: Basically a candidate for replacing the llm_response_type class in ogbujipt
-class llm_response_type(Enum):
-    MESSAGE = 1
-    TOOL_CALL = 2
-    ERROR = 3
+from toolio.common import llm_response_type, TOOLIO_MODEL_TYPE_FIELD
 
 # XXX: Basically a candidate for replacing the llm_response class in ogbujipt
 @dataclass
@@ -130,7 +123,7 @@ class llm_response:
     @classmethod
     def from_generation_response(cls, gen_resp, model_name=None, model_type=None):
         '''
-        Convert a utils.GenerationResponse to LLMResponse
+        Convert a MLX_LM utils.GenerationResponse to LLMResponse
         
         Args:
             gen_resp: GenerationResponse from utils.generate_step()

@@ -213,10 +213,14 @@ class Model:
             mx.random.seed(seed)
 
         prompt_tokens = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True)
+        print(f'{prompt_tokens=}')
 
         # FIXME: Non-reentrant
         self.curr_token_acceptor = self.json_schema_acceptor_driver_factory(schema, encapsulated) if schema else None
+        self.accepted_token_bitmap = self.curr_token_acceptor.select_valid_tokens()
 
+        del kwargs['logits_processors']
+        print(f'{kwargs=}')
         logits_generator = stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs)
 
         for generation_resp in logits_generator:
@@ -237,6 +241,7 @@ class Model:
                     raise RejectedCompletion()
 
                 self.curr_token_acceptor.advance_token(generation_resp.token)
+                print(f'{generation_resp=}')
                 yield generation_resp.token
             except JsonSchemaAcceptorDriver.TokenRejected:
                 pass

@@ -13,7 +13,7 @@ from toolio.common import extract_content, DEFAULT_JSON_SCHEMA_CUTOUT  # Just re
 from toolio.toolcall import mixin as toolcall_mixin, process_tools_for_sysmsg, TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS
 from toolio.schema_helper import Model
 # from toolio.prompt_helper import set_tool_response, set_continue_message, process_tools_for_sysmsg
-from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder, ChatCompletionStreamingResponder)
+from toolio.response_helper import llm_response
 
 
 class model_manager(toolcall_mixin):
@@ -63,8 +63,6 @@ class model_manager(toolcall_mixin):
             str: response chunks
         '''
         schema = None
-        # Regular LLM completion; no steering
-        responder = ChatCompletionStreamingResponder(self.model_path, self.model_type)
 
         if not(json_schema):
             schema, schema_str = self.default_schema, self.default_schema_str
@@ -83,7 +81,7 @@ class model_manager(toolcall_mixin):
 
         # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
         cache_prompt = False
-        async for resp in self._do_completion(messages, schema, responder, cache_prompt=cache_prompt, **kwargs):
+        async for resp in self._do_completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
             yield resp
 
     async def iter_complete_with_tools(self, messages, tools=None, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
@@ -190,7 +188,7 @@ class model_manager(toolcall_mixin):
             prompt (str or list): Text prompt or list of chat messages
             **kwargs: Additional arguments passed to __call__
         '''
-        async for resp in self.iter_complete(messages, json_schema=json_schema, stream=False,
+        async for resp in self.iter_complete(messages, json_schema=json_schema,
                                              insert_schema=insert_schema, temperature=temperature, **kwargs):
             break
 
@@ -225,23 +223,18 @@ class model_manager(toolcall_mixin):
         # schema, tool_sysmsg = process_tool_sysmsg(req_tool_spec, self.logger, leadin=self.sysmsg_leadin)
         # Schema, including no-tool fallback, plus string spec of available tools, for use in constructing sysmsg
         full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(req_tool_spec, self._internal_tools)
-        stream = False
-        if stream:
-            responder = ToolCallStreamingResponder(self.model, self.model_path, tool_schemas)
-        else:
-            responder = ToolCallResponder(self.model_path, self.model_type)
         messages = self.reconstruct_messages(messages, sysmsg=sysmsg)
         # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
         cache_prompt=False
-        async for resp in self._do_completion(messages, full_schema, responder, cache_prompt=cache_prompt, **kwargs):
+        async for resp in self._do_completion(messages, full_schema, cache_prompt=cache_prompt, **kwargs):
             yield resp
 
-    async def _do_completion(self, messages, schema, responder, cache_prompt=False, **kwargs):
+    async def _do_completion(self, messages, schema, cache_prompt=False, **kwargs):
         '''
         Actually trigger the low-level sampling, yielding response chunks
         '''
         for gen_resp in self.model.completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
-            resp = LLMResponse.from_generation_response(
+            resp = llm_response.from_generation_response(
                 gen_resp,
                 model_name=self.model_path,
                 model_type=self.model_type
