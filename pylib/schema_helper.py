@@ -184,7 +184,8 @@ class Model:
                 rejected_token_bitmap = bitmap_complement(self.accepted_token_bitmap)
                 indices = mx.array([*enumerate_set_bits(rejected_token_bitmap)])
                 bias[indices] = -inf
-            return mx.add(logits, bias)
+            logits += bias
+            return logits
 
         return logit_bias_processor
 
