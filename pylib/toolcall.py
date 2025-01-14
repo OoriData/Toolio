@@ -6,7 +6,11 @@
 import json
 import importlib
 import warnings
+from dataclasses import dataclass
+from typing import Optional, List, Any, Dict, Callable
+from time import time_ns
 
+from toolio.response_helper import llm_response, llm_response_type
 from toolio.http_schematics import V1Function
 
 from toolio.common import model_runner_base, LANG, model_flag, DEFAULT_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT
@@ -210,7 +214,7 @@ class mixin(model_runner_base):
         return tool_responses
 
     async def _handle_tool_responses(self, messages, response, req_tools, req_tool_spec=None):
-        """
+        '''
         Handle tool responses and update messages accordingly
         
         Args:
@@ -218,7 +222,7 @@ class mixin(model_runner_base):
             response: Response from LLM containing tool calls
             req_tools: Dictionary of available tools
             req_tool_spec: Optional tool specifications (needed for continue message)
-        """
+        '''
         tool_responses = await self._execute_tool_calls(response, req_tools)
 
         for call_id, callee_name, callee_args, result in tool_responses:
@@ -351,7 +355,7 @@ def process_tools_for_sysmsg(tools, internal_tools, separator='\n', **kwargs):
     # if len(tool_schemas) - len(internal_tools) == 1:
     #     # Single tool provided (second is the no-tool escape)
     #     tool_str = separator.join(
-    #         [f'\nTool name: {tool["name"]}\n {tool["description"]}\nInvocation schema:\n{json.dumps(ts)}'
+    #         [f'\nTool name: {tool['name']}\n {tool['description']}\nInvocation schema:\n{json.dumps(ts)}'
     #             for tool, ts in zip(tools, tool_schemas) ])
     # else:
     #     # XXX: Use LANG['one_tool_prompt_schemalabel']
@@ -366,3 +370,274 @@ def process_tools_for_sysmsg(tools, internal_tools, separator='\n', **kwargs):
     sysprompt = PROMPT_FORMATTER.format_map(prompt_tpl(tool_spec=tool_str, **kwargs))
 
     return full_schema, tool_schemas, sysprompt
+
+
+class tool_call_response_type(llm_response_type):
+    '''Extended response types for tool calling'''
+    TOOL_CALL = 'tool_call'       
+    TOOL_RESULT = 'tool_result'   
+
+
+@dataclass
+class tool_call:
+    '''Single tool invocation request from LLM'''
+    id: str
+    name: str
+    arguments: dict
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'tool_call':
+        return cls(
+            id=data['id'],
+            name=data['function']['name'],
+            arguments=json.loads(data['function']['arguments'])
+        )
+    
+    def to_dict(self) -> dict:
+        return {
+            'id': self.id,
+            'type': 'function',
+            'function': {
+                'name': self.name,
+                'arguments': json.dumps(self.arguments)
+            }
+        }
+
+
+class tool_call_response(llm_response):
+    '''
+    Specialized response type for tool-calling interactions.
+    Handles OpenAI-style function calling with MLX schema hooks.
+
+    State tracking fields for streaming:
+    - `current_function_index`
+    - `current_function_name`
+    - `in_function_arguments`
+
+    `update_from_streaming()` - Handles streaming updates during tool calls
+
+    Sample usage:
+
+    ```python
+    # In llm_helper.py or similar
+
+    def _completion_trip(self, messages, req_tool_spec, **kwargs):
+        # Create hooked schema for tool selection tracking
+        tool_schema = ToolCallResponse.prepare_hooked_schemas(req_tool_spec)
+        
+        for gen_resp in self.model.completion(messages, tool_schema, **kwargs):
+            resp = ToolCallResponse.from_generation_response(
+                gen_resp,
+                model_name=self.model_path,
+                model_type=self.model_type,
+                tool_schema=tool_schema
+            )
+            
+            if resp is not None:
+                if kwargs.get('stream'):
+                    # For streaming, process through update_from_streaming
+                    message = resp.update_from_streaming(gen_resp.text)
+                    if message:
+                        yield message
+                else:
+                    yield resp
+    ```
+    '''
+    def __init__(
+        self,
+        response_type: tool_call_response_type,
+        choices: List[dict],
+        tool_calls: Optional[List[tool_call]] = None,
+        tool_results: Optional[List[Any]] = None,
+        **kwargs
+    ):
+        super().__init__(response_type=response_type, choices=choices, **kwargs)
+        self.tool_calls = tool_calls
+        self.tool_results = tool_results
+        # State for tracking tool selection during generation
+        self.current_function_index = -1
+        self.current_function_name = None
+        self.in_function_arguments = False
+
+    @classmethod
+    def prepare_hooked_schemas(cls, tools: List[Dict]) -> Dict:
+        '''
+        Create JSON schema with hooks for tracking tool selection.
+        Based on ToolCallStreamingResponder logic.
+        '''
+        def set_function_name(instance, _prop_name: str, prop_value: str):
+            instance.current_function_index += 1
+            instance.current_function_name = prop_value
+
+        def start_function_arguments(instance, _prop_name: str):
+            instance.in_function_arguments = True
+
+        def end_function_arguments(instance, _prop_name: str, _prop_value: str):
+            instance.in_function_arguments = False
+
+        hooked_function_schemas = [
+            {
+                'type': 'object',
+                'properties': {
+                    'name': {
+                        'type': 'const',
+                        'const': fn['name'],
+                        '__hooks': {
+                            'value_end': set_function_name,
+                        },
+                    },
+                    'arguments': {
+                        **fn['parameters'],
+                        '__hooks': {
+                            'value_start': start_function_arguments,
+                            'value_end': end_function_arguments,
+                        },
+                    },
+                },
+                'required': ['name', 'arguments'],
+            }
+            for fn in tools
+        ]
+
+        if len(hooked_function_schemas) == 1:
+            schema = hooked_function_schemas[0]
+        else:
+            schema = {
+                'type': 'array',
+                'items': {'anyOf': hooked_function_schemas},
+            }
+
+        return schema
+
+    @classmethod
+    def from_generation_response(
+        cls,
+        gen_resp,
+        model_name=None,
+        model_type=None,
+        tool_schema: Optional[Dict] = None,
+    ) -> Optional['tool_call_response']:
+        '''Convert GenerationResponse to ToolCallResponse'''
+        # Skip empty responses
+        if not gen_resp.text:
+            return None
+
+        # Attempt tool call parsing if we have a schema
+        if tool_schema:
+            try:
+                data = json.loads(gen_resp.text)
+                # Normalize to list
+                if not isinstance(data, list):
+                    data = [data]
+                    
+                tool_calls = []
+                for tc in data:
+                    if not ('name' in tc and 'arguments' in tc):
+                        break  # Not tool call format
+                    tool_calls.append(tool_call(
+                        id=f'call_{int(time_ns())}_{len(tool_calls)}',
+                        name=tc['name'],
+                        arguments=tc['arguments']
+                    ))
+                
+                if tool_calls:
+                    # Valid tool calls found
+                    choices = [{
+                        'index': 0,
+                        'message': {
+                            'role': 'assistant',
+                            'tool_calls': [tc.to_dict() for tc in tool_calls]
+                        },
+                        'finish_reason': gen_resp.finish_reason or 'tool_calls'
+                    }]
+
+                    return cls(
+                        response_type=tool_call_response_type.TOOL_CALL,
+                        choices=choices,
+                        tool_calls=tool_calls,
+                        object='chat.completion',
+                        id=f'cmpl-{int(time_ns())}',
+                        created=int(time_ns() / 1e9),
+                        model=model_name,
+                        model_type=model_type
+                    )
+
+            except json.JSONDecodeError:
+                pass  # Not JSON, fall through to standard response
+
+        # Standard text response
+        return super().from_generation_response(gen_resp, model_name, model_type)
+
+    @classmethod
+    def create_tool_result(
+        cls,
+        tool_call_id: str,
+        tool_name: str,
+        result: Any,
+        model_name: Optional[str] = None,
+        model_type: Optional[str] = None
+    ) -> 'tool_call_response':
+        '''Create a response representing tool execution results'''
+        choices = [{
+            'index': 0,
+            'message': {
+                'role': 'tool',
+                'tool_call_id': tool_call_id,
+                'name': tool_name,
+                'content': str(result)
+            },
+            'finish_reason': 'tool_result'
+        }]
+
+        return cls(
+            response_type=tool_call_response_type.TOOL_RESULT,
+            choices=choices,
+            tool_results=[result],
+            object='chat.completion',
+            id=f'cmpl-{int(time_ns())}',
+            created=int(time_ns() / 1e9),
+            model=model_name,
+            model_type=model_type
+        )
+
+    def update_from_streaming(self, text: str) -> Optional[Dict]:
+        '''
+        Process streaming text during tool call.
+        Returns a message dict if text should be emitted.
+        '''
+        if not self.in_function_arguments:
+            return None
+
+        assert self.current_function_name is not None
+        
+        return {
+            'choices': [{
+                'index': 0,
+                'delta': {
+                    'tool_calls': [{
+                        'index': self.current_function_index,
+                        'id': f'call_{self.id}_{self.current_function_index}',
+                        'type': 'function',
+                        'function': {
+                            'name': self.current_function_name,
+                            'arguments': text,
+                        },
+                    }]
+                },
+                'finish_reason': None
+            }],
+            'object': 'chat.completion.chunk',
+            'id': self.id,
+            'created': self.created,
+            'model': self.model
+        }
+
+    @property
+    def first_tool_call(self) -> Optional[tool_call]:
+        '''Get the first tool call if any'''
+        return self.tool_calls[0] if self.tool_calls else None
+
+    @property
+    def first_tool_result(self) -> Optional[Any]:
+        '''Get the first tool result if any'''
+        return self.tool_results[0] if self.tool_results else None

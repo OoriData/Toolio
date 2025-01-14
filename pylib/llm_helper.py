@@ -13,8 +13,7 @@ from toolio.common import extract_content, DEFAULT_JSON_SCHEMA_CUTOUT  # Just re
 from toolio.toolcall import mixin as toolcall_mixin, process_tools_for_sysmsg, TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS
 from toolio.schema_helper import Model
 # from toolio.prompt_helper import set_tool_response, set_continue_message, process_tools_for_sysmsg
-from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
-                              ChatCompletionResponder, ChatCompletionStreamingResponder)
+from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder, ChatCompletionStreamingResponder)
 
 
 class model_manager(toolcall_mixin):
@@ -226,7 +225,7 @@ class model_manager(toolcall_mixin):
         # schema, tool_sysmsg = process_tool_sysmsg(req_tool_spec, self.logger, leadin=self.sysmsg_leadin)
         # Schema, including no-tool fallback, plus string spec of available tools, for use in constructing sysmsg
         full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(req_tool_spec, self._internal_tools)
-        stream = None
+        stream = False
         if stream:
             responder = ToolCallStreamingResponder(self.model, self.model_path, tool_schemas)
         else:
@@ -241,22 +240,14 @@ class model_manager(toolcall_mixin):
         '''
         Actually trigger the low-level sampling, yielding response chunks
         '''
-        prompt_tokens = None
-        # print(f'🧰 Tool {schema=}\n{sysmsg=}', file=sys.stderr)
-        for result in self.model.completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
-            if result['op'] == 'evaluatedPrompt':
-                prompt_tokens = result['token_count']
-            elif result['op'] == 'generatedTokens':
-                message = responder.generated_tokens(result['text'])
-                if message:
-                    yield message
-            elif result['op'] == 'stop':
-                completion_tokens = result['token_count']
-                yield responder.generation_stopped(
-                    result['reason'], prompt_tokens, completion_tokens
-                )
-            else:
-                raise RuntimeError(f'Unknown result operation {result["op"]}')
+        for gen_resp in self.model.completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
+            resp = LLMResponse.from_generation_response(
+                gen_resp,
+                model_name=self.model_path,
+                model_type=self.model_type
+            )
+            if resp is not None:
+                yield resp
 
 
 class local_model_runner(model_manager):
