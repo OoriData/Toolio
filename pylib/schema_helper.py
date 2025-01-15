@@ -165,27 +165,13 @@ class Model:
             '''
             Apply a -inf bias to tokens that will not be accepted
             '''
-            vocab_size = logits.shape[0]
-            highest_token_accepted = highest_bit_set(self.accepted_token_bitmap)
-            accepted_token_count = count_set_bits(self.accepted_token_bitmap)
-            # Check whether there's more tokens to be rejected or to be allowed, then do what's less work.
-            if accepted_token_count <= highest_token_accepted / 2:
-                bias = mx.full(vocab_size, -inf)
-                indices = mx.array([*enumerate_set_bits(self.accepted_token_bitmap)])
-                bias[indices] = 0
-            else:
-                bias = mx.concatenate(
-                    [
-                        mx.full(highest_token_accepted + 1, 0),
-                        # All tokens above the highest accepted token are rejected.
-                        mx.full(vocab_size - highest_token_accepted - 1, -inf),
-                    ]
-                )
-                rejected_token_bitmap = bitmap_complement(self.accepted_token_bitmap)
-                indices = mx.array([*enumerate_set_bits(rejected_token_bitmap)])
-                bias[indices] = -inf
-            # logits += bias
-            mx.add(logits, bias)
+            # Could try to re-apply the upstream logic "Check whether more tokens to reject or allow, then do what's less work."
+            # https://github.com/OoriData/Toolio/blob/903aba3a6daac3fce14b8ab84dab1d760da76304/pylib/schema_helper.py#L171
+            # But this approach might minimize the array construction enough not to bother
+            # We're instead directly setting the logits of rejected tokens to -inf rather than doing a full array add
+            # Saves us from building out a vocabulary-sized bias array
+            rejected_tokens = mx.array([*enumerate_set_bits(bitmap_complement(self.accepted_token_bitmap))])
+            logits[:, rejected_tokens] = mx.full(rejected_tokens.shape[0], -inf)
             return logits
 
         return logit_bias_processor
@@ -221,8 +207,6 @@ class Model:
         self.curr_token_acceptor = self.json_schema_acceptor_driver_factory(schema, encapsulated) if schema else None
         self.accepted_token_bitmap = self.curr_token_acceptor.select_valid_tokens()
 
-        # del kwargs['logits_processors']
-        print(f'{kwargs=}')
         logits_generator = stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs)
 
         for generation_resp in logits_generator:
