@@ -184,7 +184,8 @@ class Model:
                 rejected_token_bitmap = bitmap_complement(self.accepted_token_bitmap)
                 indices = mx.array([*enumerate_set_bits(rejected_token_bitmap)])
                 bias[indices] = -inf
-            logits += bias
+            # logits += bias
+            mx.add(logits, bias)
             return logits
 
         return logit_bias_processor
@@ -220,7 +221,7 @@ class Model:
         self.curr_token_acceptor = self.json_schema_acceptor_driver_factory(schema, encapsulated) if schema else None
         self.accepted_token_bitmap = self.curr_token_acceptor.select_valid_tokens()
 
-        del kwargs['logits_processors']
+        # del kwargs['logits_processors']
         print(f'{kwargs=}')
         logits_generator = stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs)
 
