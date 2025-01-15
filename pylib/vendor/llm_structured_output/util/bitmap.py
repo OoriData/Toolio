@@ -3,7 +3,9 @@ Utilities to use the bitmap of accepted token ids returned by TokenAcceptor.
 """
 
 from math import inf
-from typing import Iterable
+from typing import Iterable, Optional, Union, Callable, List, Any
+
+import mlx.core as mx
 
 
 def count_set_bits(bitmap: int) -> int:
@@ -45,30 +47,3 @@ def enumerate_set_bits(bitmap: int) -> Iterable[int]:
         yield highest_bit
         bitmap -= 1 << highest_bit
 
-
-def bias_logits(np, logits, accepted_token_bitmap):
-    """
-    Apply a -inf bias to tokens that will not be accepted.
-    Rather than import here, the np parameters is numpy or a compatible library
-    import, such as mlx.core.
-    """
-    vocab_size = logits.shape[0]
-    highest_token_accepted = highest_bit_set(accepted_token_bitmap)
-    accepted_token_count = count_set_bits(accepted_token_bitmap)
-    # Check whether there's more tokens to be rejected or to be allowed, then do what's less work.
-    if accepted_token_count <= highest_token_accepted / 2:
-        bias = np.full(vocab_size, -inf)
-        indices = np.array([*enumerate_set_bits(accepted_token_bitmap)])
-        bias[indices] = 0
-    else:
-        bias = np.concatenate(
-            [
-                np.full(highest_token_accepted + 1, 0),
-                # All tokens above the highest accepted token are rejected.
-                np.full(vocab_size - highest_token_accepted - 1, -inf),
-            ]
-        )
-        rejected_token_bitmap = bitmap_complement(accepted_token_bitmap)
-        indices = np.array([*enumerate_set_bits(rejected_token_bitmap)])
-        bias[indices] = -inf
-    return np.add(logits, bias)

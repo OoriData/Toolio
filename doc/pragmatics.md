@@ -14,7 +14,7 @@ Try the environment variable `HF_DATASETS_OFFLINE="1"`. Also try setting `HF_HOM
 
 ## Specifying the cache local directory
 
-One solution ot this is to explicitly load the local cache directory rather than the HF path. An easy first step is to scan the cache to see what's there:
+One solution to this is to explicitly load the local cache directory rather than the HF path. An easy first step is to scan the cache to see what's there:
 
 ```sh
 mlx_lm.manage --scan --pattern ""
@@ -33,6 +33,14 @@ toolio_server --model="/Users/username/.cache/huggingface/hub/models--mlx-commun
 ```
 
 Loading in this way will avoid any attempts to connect to the internet.
+
+### Deleting models
+
+BTW, you can also use `mlx_lm.manage` to clean up models you're no longer using. For example:
+
+```sh
+mlx_lm.manage --delete --pattern "UnneededModel"
+```
 
 ## Saving a pretrained model
 
