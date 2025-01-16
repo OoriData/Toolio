@@ -432,6 +432,8 @@ async def say_hello(tmm):
 asyncio.run(say_hello(toolio_mm))
 ```
 
+Find an expanded version of this code in `demo/country_extract.py`.
+
 ## Example of tool use
 
 ```py
