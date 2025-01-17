@@ -188,9 +188,13 @@ class model_manager(toolcall_mixin):
             prompt (str or list): Text prompt or list of chat messages
             **kwargs: Additional arguments passed to __call__
         '''
+        resp = None
         async for resp in self.iter_complete(messages, json_schema=json_schema,
                                              insert_schema=insert_schema, temperature=temperature, **kwargs):
             break
+
+        if resp is None:
+            raise RuntimeError('No response from LLM')
 
         if isinstance(resp, str):
             return resp

@@ -170,10 +170,25 @@ class Model:
             # But this approach might minimize the array construction enough not to bother
             # We're instead directly setting the logits of rejected tokens to -inf rather than doing a full array add
             # Saves us from building out a vocabulary-sized bias array
-            rejected_tokens = mx.array([*enumerate_set_bits(bitmap_complement(self.accepted_token_bitmap))])
-            logits[:, rejected_tokens] = mx.full(rejected_tokens.shape[0], -inf)
-            return logits
+            accepted_tokens = [*enumerate_set_bits(self.accepted_token_bitmap)]
+            rejected_tokens = [t for t in range(logits.shape[-1])
+                               if t not in accepted_tokens]
+            logits = mx.put_along_axis(
+                logits, mx.array(rejected_tokens), mx.array(-float("inf"), logits.dtype), axis=-1
+            )
 
+            # Debug: Print top logits and their token indices
+            top_k = 10  # Number of top logits to show
+            logits_array = logits[0].tolist()  # Convert to regular array
+            token_logits = [(i, l) for i, l in enumerate(logits_array)]
+            token_logits.sort(key=lambda x: x[1], reverse=True)  # Sort by logit value
+
+            print("\nAfter top logits:")
+            for token_idx, logit_val in token_logits[:top_k]:
+                token_text = self.tokenizer.decode([token_idx])  # Use regular decode method
+                print(f"Token {token_idx} ({token_text!r}): {logit_val:.3f}")
+
+            return logits
         return logit_bias_processor
 
     def completion(
@@ -229,6 +244,14 @@ class Model:
                 yield generation_resp
             except JsonSchemaAcceptorDriver.TokenRejected:
                 pass
+
+    def detokenize_dammit(self, tokens):
+        '''Really just used for debugging'''
+        detokenizer = self.tokenizer.detokenizer
+        for tok in tokens:
+            detokenizer.reset()
+            detokenizer.add_token(tok)
+            yield detokenizer.last_segment
 
 
 class ReusableKVCache(KVCache):
