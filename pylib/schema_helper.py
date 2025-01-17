@@ -163,24 +163,28 @@ class Model:
         '''
         Apply a -inf bias to tokens that will not be accepted
         '''
-        # Could try to re-apply the upstream logic "Check whether more tokens to reject or allow, then do what's less work."
-        # https://github.com/OoriData/Toolio/blob/903aba3a6daac3fce14b8ab84dab1d760da76304/pylib/schema_helper.py#L171
-        # But this approach might minimize the array construction enough not to bother
-        # We're instead directly setting the logits of rejected tokens to -inf rather than doing a full array add
-        # Saves us from building out a vocabulary-sized bias array
+        if tokens.size <= self._prompt_length:  # Still processing prompt (prefill)
+            # print('In prefill')
+            return logits
+
+        # print('In generation')
+
+        # Get valid next tokens from current state
         accepted_token_bitmap = self.curr_token_acceptor.select_valid_tokens()
         if not accepted_token_bitmap:
             raise RejectedCompletion()
 
+        # Set logits of rejected tokens to -inf
         accepted_tokens = [*enumerate_set_bits(accepted_token_bitmap)]
         rejected_tokens = [t for t in range(logits.shape[-1])
-                            if t not in accepted_tokens]
+                        if t not in accepted_tokens]
         logits = mx.put_along_axis(
-            logits, mx.array(rejected_tokens)[None, ...], mx.array(-float("inf"), logits.dtype), axis=-1
+            logits, mx.array(rejected_tokens)[None, ...], mx.array(-inf, logits.dtype), axis=-1
         )
 
-        self.peek_top_logits(logits)  # DEBUG ONLY
-
+        # print('After biasing:')
+        # self._peek_top_logits(logits)  # DEBUG ONLY
+        # x = 2030; x = 33966; print(f'Logit check {x} | {logits[0].tolist()[x]}')
         return logits
 
     def completion(
@@ -208,34 +212,49 @@ class Model:
             mx.random.seed(seed)
 
         prompt_tokens = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True)
+        self._prompt_length = len(prompt_tokens)  # Store prompt length
 
         # FIXME: Non-reentrant
         self.curr_token_acceptor = self.json_schema_acceptor_driver_factory(schema, encapsulated) if schema else None
 
         logits_generator = stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs)
 
-        for generation_resp in logits_generator:
-            # generation_resp is a GenerationResponse object
-            # text (str): The next segment of decoded text. This can be an empty string.
-            # token (int): The next token.
-            # logprobs (mx.array): A vector of log probabilities.
-            # prompt_tokens (int): The number of tokens in the prompt.
-            # prompt_tps (float): The prompt processing tokens-per-second.
-            # generation_tokens (int): The number of generated tokens.
-            # generation_tps (float): The tokens-per-second for generation.
-            # peak_memory (float): The peak memory used so far in GB.
-            # finish_reason (str): The reason the response is being sent: "length", "stop" or `None`
+        for generation_resp in stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs):
+            print(f'{generation_resp.token=}')
+            print(repr(self._detokenize(generation_resp.token)))
+            if generation_resp.token is not None:
+                try:
+                    self.curr_token_acceptor.advance_token(generation_resp.token)
+                except JsonSchemaAcceptorDriver.TokenRejected:
+                    raise
 
-            # By select valid tokens they really mean create a bitmap masking out invalid tokens
-            try:
-                # print('Picked:', list(self.detokenize_dammit([self.generation_resp.token])))
-                self.curr_token_acceptor.advance_token(generation_resp.token)
+            yield generation_resp
 
-                yield generation_resp
-            except JsonSchemaAcceptorDriver.TokenRejected:
-                raise  # Explicit re-raise for now, just to flag how fundamental an error this is
+        # for generation_resp in logits_generator:
+        #     # generation_resp is a GenerationResponse object
+        #     # text (str): The next segment of decoded text. This can be an empty string.
+        #     # token (int): The next token.
+        #     # logprobs (mx.array): A vector of log probabilities.
+        #     # prompt_tokens (int): The number of tokens in the prompt.
+        #     # prompt_tps (float): The prompt processing tokens-per-second.
+        #     # generation_tokens (int): The number of generated tokens.
+        #     # generation_tps (float): The tokens-per-second for generation.
+        #     # peak_memory (float): The peak memory used so far in GB.
+        #     # finish_reason (str): The reason the response is being sent: "length", "stop" or `None`
 
-    def peek_top_logits(self, logits):
+        #     # Skip token acceptor advancement during prefill
+        #     # print(generation_resp.token)
+        #     if generation_resp.token is not None: # Generation phase started
+        #         self._in_prefill = False
+        #         try:
+        #             # print('Picked:', list(self.detokenize_dammit([self.generation_resp.token])))
+        #             self.curr_token_acceptor.advance_token(generation_resp.token)
+        #         except JsonSchemaAcceptorDriver.TokenRejected:
+        #             raise  # Explicit re-raise for now
+
+        #     yield generation_resp
+
+    def _peek_top_logits(self, logits):
         # Debug: Print top logits and their token indices
         top_k = 10  # Number of top logits to show
         logits_array = logits[0].tolist()  # Convert to regular array
@@ -247,13 +266,15 @@ class Model:
             token_text = self.tokenizer.decode([token_idx])  # Use regular decode method
             print(f"Token {token_idx} ({token_text!r}): {logit_val:.3f}")
 
-    def detokenize_dammit(self, tokens):
-        '''Really just used for debugging'''
+    def _detokenize(self, tokens):
+        '''For debugging'''
+        if not isinstance(tokens, list):
+            tokens = [tokens]
         detokenizer = self.tokenizer.detokenizer
+        detokenizer.reset()
         for tok in tokens:
-            detokenizer.reset()
             detokenizer.add_token(tok)
-            yield detokenizer.last_segment
+        return detokenizer.last_segment
 
 
 class ReusableKVCache(KVCache):
