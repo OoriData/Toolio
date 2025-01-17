@@ -46,7 +46,6 @@ class RejectedCompletion(Exception):
     Could also be an inability of the LLM to generate JSON, although most can.
     '''
 
-
 class Model:
     def __init__(self):
         mx.random.seed(0)
@@ -160,36 +159,29 @@ class Model:
     #             break
     #         logits = self.model(mx.array(tokens)[None], cache=cache)
 
-    def make_logit_bias_processor(self) -> Callable[[mx.array, mx.array], mx.array]:
-        def logit_bias_processor(tokens: mx.array, logits: mx.array) -> mx.array:
-            '''
-            Apply a -inf bias to tokens that will not be accepted
-            '''
-            # Could try to re-apply the upstream logic "Check whether more tokens to reject or allow, then do what's less work."
-            # https://github.com/OoriData/Toolio/blob/903aba3a6daac3fce14b8ab84dab1d760da76304/pylib/schema_helper.py#L171
-            # But this approach might minimize the array construction enough not to bother
-            # We're instead directly setting the logits of rejected tokens to -inf rather than doing a full array add
-            # Saves us from building out a vocabulary-sized bias array
-            accepted_tokens = [*enumerate_set_bits(self.accepted_token_bitmap)]
-            rejected_tokens = [t for t in range(logits.shape[-1])
-                               if t not in accepted_tokens]
-            logits = mx.put_along_axis(
-                logits, mx.array(rejected_tokens), mx.array(-float("inf"), logits.dtype), axis=-1
-            )
+    def logit_bias_processor(self, tokens: mx.array, logits: mx.array) -> mx.array:
+        '''
+        Apply a -inf bias to tokens that will not be accepted
+        '''
+        # Could try to re-apply the upstream logic "Check whether more tokens to reject or allow, then do what's less work."
+        # https://github.com/OoriData/Toolio/blob/903aba3a6daac3fce14b8ab84dab1d760da76304/pylib/schema_helper.py#L171
+        # But this approach might minimize the array construction enough not to bother
+        # We're instead directly setting the logits of rejected tokens to -inf rather than doing a full array add
+        # Saves us from building out a vocabulary-sized bias array
+        accepted_token_bitmap = self.curr_token_acceptor.select_valid_tokens()
+        if not accepted_token_bitmap:
+            raise RejectedCompletion()
 
-            # Debug: Print top logits and their token indices
-            top_k = 10  # Number of top logits to show
-            logits_array = logits[0].tolist()  # Convert to regular array
-            token_logits = [(i, l) for i, l in enumerate(logits_array)]
-            token_logits.sort(key=lambda x: x[1], reverse=True)  # Sort by logit value
+        accepted_tokens = [*enumerate_set_bits(accepted_token_bitmap)]
+        rejected_tokens = [t for t in range(logits.shape[-1])
+                            if t not in accepted_tokens]
+        logits = mx.put_along_axis(
+            logits, mx.array(rejected_tokens)[None, ...], mx.array(-float("inf"), logits.dtype), axis=-1
+        )
 
-            print("\nAfter top logits:")
-            for token_idx, logit_val in token_logits[:top_k]:
-                token_text = self.tokenizer.decode([token_idx])  # Use regular decode method
-                print(f"Token {token_idx} ({token_text!r}): {logit_val:.3f}")
+        self.peek_top_logits(logits)  # DEBUG ONLY
 
-            return logits
-        return logit_bias_processor
+        return logits
 
     def completion(
         self,
@@ -206,7 +198,7 @@ class Model:
 
         logits_processors = kwargs.get('logits_processors', [])
         logits_processors = logits_processors.copy()
-        logits_processors.append(self.make_logit_bias_processor())
+        logits_processors.append(self.logit_bias_processor)
         kwargs['logits_processors'] = logits_processors
 
         if self.tokenizer is None:  # Not loaded
@@ -219,7 +211,6 @@ class Model:
 
         # FIXME: Non-reentrant
         self.curr_token_acceptor = self.json_schema_acceptor_driver_factory(schema, encapsulated) if schema else None
-        self.accepted_token_bitmap = self.curr_token_acceptor.select_valid_tokens()
 
         logits_generator = stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs)
 
@@ -234,16 +225,27 @@ class Model:
             # generation_tps (float): The tokens-per-second for generation.
             # peak_memory (float): The peak memory used so far in GB.
             # finish_reason (str): The reason the response is being sent: "length", "stop" or `None`
-            try:
-                # By select valid tokens they really mean create a bitmap masking out invalid tokens
-                self.accepted_token_bitmap = self.curr_token_acceptor.select_valid_tokens()
-                if not self.accepted_token_bitmap:
-                    raise RejectedCompletion()
 
+            # By select valid tokens they really mean create a bitmap masking out invalid tokens
+            try:
+                # print('Picked:', list(self.detokenize_dammit([self.generation_resp.token])))
                 self.curr_token_acceptor.advance_token(generation_resp.token)
+
                 yield generation_resp
             except JsonSchemaAcceptorDriver.TokenRejected:
-                pass
+                raise  # Explicit re-raise for now, just to flag how fundamental an error this is
+
+    def peek_top_logits(self, logits):
+        # Debug: Print top logits and their token indices
+        top_k = 10  # Number of top logits to show
+        logits_array = logits[0].tolist()  # Convert to regular array
+        token_logits = [(i, l) for i, l in enumerate(logits_array)]
+        token_logits.sort(key=lambda x: x[1], reverse=True)  # Sort by logit value
+
+        print("\nTop logits:")
+        for token_idx, logit_val in token_logits[:top_k]:
+            token_text = self.tokenizer.decode([token_idx])  # Use regular decode method
+            print(f"Token {token_idx} ({token_text!r}): {logit_val:.3f}")
 
     def detokenize_dammit(self, tokens):
         '''Really just used for debugging'''
