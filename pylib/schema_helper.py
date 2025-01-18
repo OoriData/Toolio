@@ -47,7 +47,9 @@ class RejectedCompletion(Exception):
     '''
 
 
-def apply_token_mask_batched(logits, accepted_token_bitmap, batch_size=1024):
+DEFAULT_TOKEN_MASK_BATCH_SIZE = 1024
+
+def apply_token_mask_batched(logits, accepted_token_bitmap, batch_size=DEFAULT_TOKEN_MASK_BATCH_SIZE):
     '''
     Iterators/generators approach to setting logits of non-accepted tokens to -inf
 
@@ -124,97 +126,6 @@ class Model:
             )
         )
 
-    def _evaluate_prompt(
-        self, prompt: list[int], prior_prompt: list[int] = None, prior_cache=None
-    ):
-        if prior_prompt:
-            i = 0
-            for i, t in enumerate(prior_prompt):
-                # Need to leave at least one token to evaluate because we don't
-                # save the past logits.
-                if i >= len(prompt) - 1 or prompt[i] != t:
-                    break
-            cache = prior_cache
-            for layer_cache in cache:
-                layer_cache.reuse(len(prompt), i)
-            tokens = prompt[i:]
-            # print('CACHED', tokens, prompt, i)
-        else:
-            cache = ReusableKVCache.for_model(self.model)
-            tokens = prompt
-            # print('UNCACHED', tokens)
-
-        logits = self.model(mx.array(tokens)[None], cache=cache)
-        return logits, cache
-
-    def _decode(self, tokens):
-        return self.tokenizer.no_strip_decode(tokens)
-
-    def _debug_top_tokens(self, logits, count=10):
-        token_logits = sorted(
-            enumerate(logits.tolist()), key=itemgetter(1), reverse=True
-        )
-        top_tokens = [
-            (self._decode([t]), p) for t, p in token_logits[:count] if p != -inf
-        ]
-        debug('TOP TOKENS:', top_tokens)
-
-    def _sample_with_bias(
-        self, logits, temp: float = 0, token_acceptor=None, lazy_bias: bool = True
-    ):
-        if token_acceptor is None:
-            return self._sample(logits, temp)
-
-        if lazy_bias:
-            token = self._sample(logits, temp)
-            try:
-                token_acceptor.advance_token(token)
-                return token
-            except JsonSchemaAcceptorDriver.TokenRejected:
-                pass
-
-        # By select valid tokens they really mean create a bitmap masking out invalid tokens
-        accepted_token_bitmap = token_acceptor.select_valid_tokens()
-        if not accepted_token_bitmap:
-            raise RejectedCompletion()
-        # token = self._sample(bias_logits(mx, logits, accepted_token_bitmap), temp)
-        token_acceptor.advance_token(token)
-        return token
-
-    def logit_bias_processor(self, tokens: mx.array, logits: mx.array) -> mx.array:
-        '''
-        Apply a -inf bias to tokens that will not be accepted
-        '''
-        if self._step_count > 0:
-            # Just past the stream_generate look-ahead step. Have to advance the state here,
-            # because the chosen token won't have bubbled up to completion() whare that usually happens
-            # Advance the acceptor state, so it's ready for the next biasing step
-            prev_tok = tokens.tolist()[-1]
-            if prev_tok != self.eos_id:
-                try:
-                    self.curr_token_acceptor.advance_token(prev_tok)
-                except JsonSchemaAcceptorDriver.TokenRejected:
-                    raise
-
-        self._step_count += 1
-
-        # Compute valid next tokens from current state
-        accepted_token_bitmap = self.curr_token_acceptor.select_valid_tokens()
-        if not accepted_token_bitmap:
-            raise RejectedCompletion()
-
-        # Set logits of rejected tokens to -inf
-        logits = apply_token_mask(logits, accepted_token_bitmap)
-        # accepted_tokens = [*enumerate_set_bits(accepted_token_bitmap)]
-        # rejected_tokens = [t for t in range(logits.shape[-1])
-        #                 if t not in accepted_tokens]
-        # logits = mx.put_along_axis(
-        #     logits, mx.array(rejected_tokens)[None, ...], mx.array(-inf, logits.dtype), axis=-1
-        # )
-
-        # print('After biasing:'); self._peek_top_logits(logits)
-        return logits
-
     def completion(
         self,
         messages: Union[str, Iterable[dict[str, str]]],
@@ -251,6 +162,34 @@ class Model:
         for generation_resp in stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs):
             yield generation_resp
 
+    def logit_bias_processor(self, tokens: mx.array, logits: mx.array) -> mx.array:
+        '''
+        Apply a -inf bias to tokens that will not be accepted
+        '''
+        if self._step_count > 0:
+            # Just past the stream_generate look-ahead step. Have to advance the state here,
+            # because the chosen token won't have bubbled up to completion() whare that usually happens
+            # Advance the acceptor state, so it's ready for the next biasing step
+            prev_tok = tokens.tolist()[-1]
+            if prev_tok != self.eos_id:
+                try:
+                    self.curr_token_acceptor.advance_token(prev_tok)
+                except JsonSchemaAcceptorDriver.TokenRejected:
+                    raise
+
+        self._step_count += 1
+
+        # Compute valid next tokens from current state
+        accepted_token_bitmap = self.curr_token_acceptor.select_valid_tokens()
+        if not accepted_token_bitmap:
+            raise RejectedCompletion()
+
+        # Set logits of rejected tokens to -inf
+        logits = apply_token_mask(logits, accepted_token_bitmap)
+
+        # print('After biasing:'); self._peek_top_logits(logits)
+        return logits
+
     def _peek_top_logits(self, logits):
         # Debug: Print top logits and their token indices
         top_k = 10  # Number of top logits to show
@@ -273,63 +212,14 @@ class Model:
             detokenizer.add_token(tok)
         return detokenizer.last_segment
 
+    def _decode(self, tokens):
+        return self.tokenizer.no_strip_decode(tokens)
 
-class ReusableKVCache(KVCache):
-    '''
-    Usability improvements over MLX's KVCache.
-    '''
-    @classmethod
-    def for_model(cls, model):
-        return [cls() for _ in model.layers]
-
-    def reuse(self, new_prompt_length, common_prefix_length):
-        '''
-        Reuse (part of) this cache for a new prompt that shares a prefix with it.
-        '''
-        if self.keys is None:
-            return
-        # Clip the cache to the common length.
-        self.offset = common_prefix_length
-        # Ensure cache can fit the whole prompt. Because the offset is (very likely) not a multiple of the step size,
-        # update_and_fetch() won't resize the cache when evaluating the rest of the prompt as it
-        # would if it were an empty cache.
-        current_size = self.keys.shape[2]
-        if current_size < new_prompt_length:
-            _, n_kv_heads, _, k_head_dim = self.keys.shape
-            v_head_dim = self.values.shape[3]
-
-            n_steps = (self.step + new_prompt_length - 1) // self.step
-            k_add_shape = (1, n_kv_heads, n_steps * self.step - current_size, k_head_dim)
-            v_add_shape = (1, n_kv_heads, n_steps * self.step - current_size, v_head_dim)
-            k_zeros = mx.zeros(k_add_shape, self.keys.dtype)
-            v_zeros = mx.zeros(v_add_shape, self.values.dtype)
-            self.keys = mx.concatenate([self.keys, k_zeros], axis=2)
-            self.values = mx.concatenate([self.values, v_zeros], axis=2)
-
-    def update_and_fetch(self, keys, values):
-        '''
-        Override base class method to allow the cache to be used with batches size >1
-        (Just a tiny change in the line that determines the shape)
-        '''
-        prev = self.offset
-        if self.keys is None or (prev + keys.shape[2]) > self.keys.shape[2]:
-            B, n_kv_heads, _, k_head_dim = keys.shape
-            v_head_dim = values.shape[3]
-            n_steps = (self.step + keys.shape[2] - 1) // self.step
-            k_shape = (B, n_kv_heads, n_steps * self.step, k_head_dim)
-            v_shape = (B, n_kv_heads, n_steps * self.step, v_head_dim)
-            new_k = mx.zeros(k_shape, keys.dtype)
-            new_v = mx.zeros(v_shape, values.dtype)
-            if self.keys is not None:
-                if prev % self.step != 0:
-                    self.keys = self.keys[..., :prev, :]
-                    self.values = self.values[..., :prev, :]
-                self.keys = mx.concatenate([self.keys, new_k], axis=2)
-                self.values = mx.concatenate([self.values, new_v], axis=2)
-            else:
-                self.keys, self.values = new_k, new_v
-
-        self.offset += keys.shape[2]
-        self.keys[..., prev : self.offset, :] = keys
-        self.values[..., prev : self.offset, :] = values
-        return self.keys[..., : self.offset, :], self.values[..., : self.offset, :]
+    def _debug_top_tokens(self, logits, count=10):
+        token_logits = sorted(
+            enumerate(logits.tolist()), key=itemgetter(1), reverse=True
+        )
+        top_tokens = [
+            (self._decode([t]), p) for t, p in token_logits[:count] if p != -inf
+        ]
+        debug('TOP TOKENS:', top_tokens)
