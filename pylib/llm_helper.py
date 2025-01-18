@@ -121,7 +121,7 @@ class model_manager(toolcall_mixin):
             tool_call_resp = None
             # {'choices': [{'index': 0, 'message': {'role': 'assistant',
             # 'tool_calls': [{'id': 'call_6434200784_1722311129_0', 'type': 'function',
-            # 'function': {'name': 'square_root', 'arguments': '{"square": 256}'}}]}, 'finish_reason': 'tool_calls'}],
+            # 'function': {'name': 'square_root', 'arguments': '{'square': 256}'}}]}, 'finish_reason': 'tool_calls'}],
             # 'usage': {'completion_tokens': 24, 'prompt_tokens': 15, 'total_tokens': 39},
             # 'object': 'chat.completion', 'id': 'chatcmpl-6434200784_1722311129', 'created': 1722311129,
             # 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'}
@@ -241,7 +241,7 @@ class model_manager(toolcall_mixin):
                     # generation_tokens (int): The number of generated tokens.
                     # generation_tps (float): The tokens-per-second for generation.
                     # peak_memory (float): The peak memory used so far in GB.
-                    # finish_reason (str): The reason the response is being sent: "length", "stop" or `None`
+                    # finish_reason (str): The reason the response is being sent: 'length', 'stop' or `None`
                 if simple:
                     resp = resp.text
                 else:

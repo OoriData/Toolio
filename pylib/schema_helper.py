@@ -5,16 +5,16 @@
 '''
 JSON schema decoding with MLX
 '''
-import time
+# import time
 import functools
 from math import inf
 from operator import itemgetter
-from typing import Iterable, Optional, Union, Callable, List, Any
+from typing import Iterable, Union, Any
 
 import mlx.core as mx
-from mlx_lm.models.cache import KVCache, _BaseCache
-from mlx_lm.models.cache import make_prompt_cache
-from mlx_lm.utils import load, stream_generate, GenerationResponse
+# from mlx_lm.models.cache import KVCache, _BaseCache
+# from mlx_lm.models.cache import make_prompt_cache
+from mlx_lm.utils import load, stream_generate # , GenerationResponse
 
 from toolio.vendor.llm_structured_output import JsonSchemaAcceptorDriver
 from toolio.vendor.llm_structured_output.util.bitmap import highest_bit_set, count_set_bits, bitmap_complement, enumerate_set_bits
@@ -47,59 +47,27 @@ class RejectedCompletion(Exception):
     '''
 
 
-DEFAULT_TOKEN_MASK_BATCH_SIZE = 1024
-
-def apply_token_mask_batched(logits, accepted_token_bitmap, batch_size=DEFAULT_TOKEN_MASK_BATCH_SIZE):
-    '''
-    Iterators/generators approach to setting logits of non-accepted tokens to -inf
-
-    Fixed-size batched approach, trading off space/speed by only creating small temporary lists for each batch,
-    And reducing calls to put_along_axis()
-
-    A larger batch size will generally be faster but use more memory
-    '''
-    vocab_size = logits.shape[-1]
-    
-    # Process tokens in batches
-    for start_idx in range(0, vocab_size, batch_size):
-        end_idx = min(start_idx + batch_size, vocab_size)
-        batch_indices = []
-
-        # Check each token in the current batch
-        for token_idx in range(start_idx, end_idx):
-            if not accepted_token_bitmap & (1 << token_idx):
-                batch_indices.append(token_idx)
-
-        # If we found any tokens to reject in this batch, update logits
-        if batch_indices:
-            logits = mx.put_along_axis(
-                logits,
-                mx.array(batch_indices)[None, ...],
-                mx.array(-inf, logits.dtype),
-                axis=-1
-            )
-
-    return logits
+@functools.lru_cache(maxsize=128)
+def create_mask(accepted_token_bitmap, vocab_size):
+    return mx.array([(accepted_token_bitmap & (1 << i)) != 0 for i in range(vocab_size)])
 
 
 def apply_token_mask(logits, accepted_token_bitmap):
-    '''
-    Iterators/generators approach to setting logits of non-accepted tokens to -inf
-    '''
-    # Process each position in the logits vocabulary dimension
-    for token_idx in range(logits.shape[-1]):
-        # Check if this token should be rejected (not in accepted bitmap)
-        if not accepted_token_bitmap & (1 << token_idx):
-            logits = mx.put_along_axis(
-                logits,
-                mx.array([token_idx])[None, ...],
-                mx.array(-inf, logits.dtype),
-                axis=-1
-            )
-    return logits
+    vocab_size = logits.shape[-1]
 
+    # Use the memoized function to create or retrieve a boolean mask for the entire vocabulary
+    mask = create_mask(accepted_token_bitmap, vocab_size)
 
-apply_token_mask = apply_token_mask_batched
+    # Invert the mask and convert to the same dtype as logits
+    inverted_mask = (~mask).astype(logits.dtype)
+
+    # Multiply the inverted mask by negative infinity
+    inf_mask = inverted_mask * mx.array(-mx.inf, dtype=logits.dtype)
+
+    # Apply the mask to logits
+    masked_logits = mx.where(mask, logits, inf_mask)
+
+    return masked_logits
 
 
 class Model:
@@ -197,10 +165,10 @@ class Model:
         token_logits = [(i, l) for i, l in enumerate(logits_array)]
         token_logits.sort(key=lambda x: x[1], reverse=True)  # Sort by logit value
 
-        print("\nTop logits:")
+        print('\nTop logits:')
         for token_idx, logit_val in token_logits[:top_k]:
             token_text = self.tokenizer.decode([token_idx])  # Use regular decode method
-            print(f"Token {token_idx} ({token_text!r}): {logit_val:.3f}")
+            print(f'Token {token_idx} ({token_text!r}): {logit_val:.3f}')
 
     def _detokenize(self, tokens):
         '''For debugging'''
