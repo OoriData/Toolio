@@ -9,7 +9,7 @@ import warnings
 
 from mlx_lm.sample_utils import make_sampler
 
-from toolio.common import extract_content, DEFAULT_JSON_SCHEMA_CUTOUT  # Just really for legacy import patterns # noqa: F401
+from toolio.common import extract_content, DEFAULT_JSON_SCHEMA_CUTOUT  # Supports legacy import patterns # noqa: F401
 from toolio.toolcall import mixin as toolcall_mixin, process_tools_for_sysmsg, TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS
 from toolio.schema_helper import Model
 # from toolio.prompt_helper import set_tool_response, set_continue_message, process_tools_for_sysmsg
@@ -43,7 +43,7 @@ class model_manager(toolcall_mixin):
                          sysmsg_leadin=sysmsg_leadin, remove_used_tools=remove_used_tools,
                          default_schema=default_schema, json_schema_cutout=json_schema_cutout)
 
-    async def iter_complete(self, messages, json_schema=None, temperature=None, insert_schema=True, **kwargs):
+    async def iter_complete(self, messages, json_schema=None, temperature=None, insert_schema=True, simple=True, **kwargs):
         '''
         Invoke the LLM with a completion request
 
@@ -81,7 +81,7 @@ class model_manager(toolcall_mixin):
 
         # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
         cache_prompt = False
-        async for resp in self._do_completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
+        async for resp in self._do_completion(messages, schema, cache_prompt=cache_prompt, simple=simple, **kwargs):
             yield resp
 
     async def iter_complete_with_tools(self, messages, tools=None, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
@@ -188,19 +188,13 @@ class model_manager(toolcall_mixin):
             prompt (str or list): Text prompt or list of chat messages
             **kwargs: Additional arguments passed to __call__
         '''
-        resp = None
-        async for resp in self.iter_complete(messages, json_schema=json_schema,
-                                             insert_schema=insert_schema, temperature=temperature, **kwargs):
-            break
+        chunks = []
+        async for chunk in self.iter_complete(messages, json_schema=json_schema, insert_schema=insert_schema,
+                                              temperature=temperature, **kwargs):
+            chunks.append(chunk)
+        return ''.join(chunks)
 
-        if resp is None:
-            raise RuntimeError('No response from LLM')
-
-        if isinstance(resp, str):
-            return resp
-        else:
-            # Extract text from response object
-            return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message'].get('content')
+        # return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message'].get('content')
 
     async def complete_with_tools(self, messages, tools=None, json_schema=None, max_trips=3,
                                     tool_choice=TOOL_CHOICE_AUTO, temperature=None, **kwargs):
@@ -230,20 +224,23 @@ class model_manager(toolcall_mixin):
         messages = self.reconstruct_messages(messages, sysmsg=sysmsg)
         # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
         cache_prompt=False
-        async for resp in self._do_completion(messages, full_schema, cache_prompt=cache_prompt, **kwargs):
+        async for resp in self._do_completion(messages, full_schema, cache_prompt=cache_prompt, simple=False, **kwargs):
             yield resp
 
-    async def _do_completion(self, messages, schema, cache_prompt=False, **kwargs):
+    async def _do_completion(self, messages, schema, cache_prompt=False, simple=True, **kwargs):
         '''
         Actually trigger the low-level sampling, yielding response chunks
         '''
-        for gen_resp in self.model.completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
-            resp = llm_response.from_generation_response(
-                gen_resp,
-                model_name=self.model_path,
-                model_type=self.model_type
-            )
+        for resp in self.model.completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
             if resp is not None:
+                if simple:
+                    resp = resp.text
+                else:
+                    resp = llm_response.from_generation_response(
+                        resp,
+                        model_name=self.model_path,
+                        model_type=self.model_type
+                    )
                 yield resp
 
 

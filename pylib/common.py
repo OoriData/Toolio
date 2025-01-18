@@ -188,3 +188,8 @@ async def response_text(resp_stream):
     async for chunk in extract_content(resp_stream):
         chunks.append(chunk)
     return ''.join(chunks)
+
+
+async def iter_print(resp_stream):
+    async for chunk in resp_stream:
+        print(chunk, end='', flush=True)

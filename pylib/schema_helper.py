@@ -46,6 +46,57 @@ class RejectedCompletion(Exception):
     Could also be an inability of the LLM to generate JSON, although most can.
     '''
 
+
+def apply_token_mask_batched(logits, accepted_token_bitmap, batch_size=1024):
+    '''
+    Iterators/generators approach to setting logits of non-accepted tokens to -inf
+
+    Batched approach to better trade-off space/speed
+    '''
+    vocab_size = logits.shape[-1]
+    
+    # Process tokens in batches
+    for start_idx in range(0, vocab_size, batch_size):
+        end_idx = min(start_idx + batch_size, vocab_size)
+        batch_indices = []
+
+        # Check each token in the current batch
+        for token_idx in range(start_idx, end_idx):
+            if not accepted_token_bitmap & (1 << token_idx):
+                batch_indices.append(token_idx)
+
+        # If we found any tokens to reject in this batch, update logits
+        if batch_indices:
+            logits = mx.put_along_axis(
+                logits,
+                mx.array(batch_indices)[None, ...],
+                mx.array(-inf, logits.dtype),
+                axis=-1
+            )
+
+    return logits
+
+
+def apply_token_mask(logits, accepted_token_bitmap):
+    '''
+    Iterators/generators approach to setting logits of non-accepted tokens to -inf
+    '''
+    # Process each position in the logits vocabulary dimension
+    for token_idx in range(logits.shape[-1]):
+        # Check if this token should be rejected (not in accepted bitmap)
+        if not accepted_token_bitmap & (1 << token_idx):
+            logits = mx.put_along_axis(
+                logits,
+                mx.array([token_idx])[None, ...],
+                mx.array(-inf, logits.dtype),
+                axis=-1
+            )
+    return logits
+
+
+apply_token_mask = apply_token_mask_batched
+
+
 class Model:
     def __init__(self):
         mx.random.seed(0)
@@ -163,28 +214,32 @@ class Model:
         '''
         Apply a -inf bias to tokens that will not be accepted
         '''
-        if tokens.size <= self._prompt_length:  # Still processing prompt (prefill)
-            # print('In prefill')
-            return logits
+        if self._step_count > 0:
+            # Just past the stream_generate look-ahead step. Have to advance the state here,
+            # because the chosen token won't have bubbled up to completion() whare that usually happens
+            # Advance the acceptor state, so it's ready for the next biasing step
+            try:
+                self.curr_token_acceptor.advance_token(tokens.tolist()[-1])
+            except JsonSchemaAcceptorDriver.TokenRejected:
+                raise
 
-        # print('In generation')
+        self._step_count += 1
 
-        # Get valid next tokens from current state
+        # Compute valid next tokens from current state
         accepted_token_bitmap = self.curr_token_acceptor.select_valid_tokens()
         if not accepted_token_bitmap:
             raise RejectedCompletion()
 
         # Set logits of rejected tokens to -inf
-        accepted_tokens = [*enumerate_set_bits(accepted_token_bitmap)]
-        rejected_tokens = [t for t in range(logits.shape[-1])
-                        if t not in accepted_tokens]
-        logits = mx.put_along_axis(
-            logits, mx.array(rejected_tokens)[None, ...], mx.array(-inf, logits.dtype), axis=-1
-        )
+        logits = apply_token_mask(logits, accepted_token_bitmap)
+        # accepted_tokens = [*enumerate_set_bits(accepted_token_bitmap)]
+        # rejected_tokens = [t for t in range(logits.shape[-1])
+        #                 if t not in accepted_tokens]
+        # logits = mx.put_along_axis(
+        #     logits, mx.array(rejected_tokens)[None, ...], mx.array(-inf, logits.dtype), axis=-1
+        # )
 
-        # print('After biasing:')
-        # self._peek_top_logits(logits)  # DEBUG ONLY
-        # x = 2030; x = 33966; print(f'Logit check {x} | {logits[0].tolist()[x]}')
+        # print('After biasing:'); self._peek_top_logits(logits)
         return logits
 
     def completion(
@@ -219,15 +274,8 @@ class Model:
 
         logits_generator = stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs)
 
+        self._step_count = 0
         for generation_resp in stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs):
-            print(f'{generation_resp.token=}')
-            print(repr(self._detokenize(generation_resp.token)))
-            if generation_resp.token is not None:
-                try:
-                    self.curr_token_acceptor.advance_token(generation_resp.token)
-                except JsonSchemaAcceptorDriver.TokenRejected:
-                    raise
-
             yield generation_resp
 
         # for generation_resp in logits_generator:
