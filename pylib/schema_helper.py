@@ -51,7 +51,10 @@ def apply_token_mask_batched(logits, accepted_token_bitmap, batch_size=1024):
     '''
     Iterators/generators approach to setting logits of non-accepted tokens to -inf
 
-    Batched approach to better trade-off space/speed
+    Fixed-size batched approach, trading off space/speed by only creating small temporary lists for each batch,
+    And reducing calls to put_along_axis()
+
+    A larger batch size will generally be faster but use more memory
     '''
     vocab_size = logits.shape[-1]
     
@@ -178,38 +181,6 @@ class Model:
         token_acceptor.advance_token(token)
         return token
 
-    # def stream_generate_with_schema(
-    #     self,
-    #     prompt: mx.array,
-    #     max_tokens: int = 256,
-    #     temp: Optional[float] = 0.0,
-    #     sampler: Optional[Callable[mx.array, mx.array]] = None,
-    #     logits_processors: Optional[List[Callable[[mx.array, mx.array], mx.array]]] = None,
-    #     max_kv_size: Optional[int] = None,
-    #     # prompt_cache: Optional[_BaseCache] = None,
-    #     prefill_step_size: int = 512,
-    #     kv_bits: Optional[int] = None,
-    #     kv_group_size: int = 64,
-    #     quantized_kv_start: int = 0,
-    #     prompt_progress_callback: Optional[Callable] = None,
-    # ):
-    #     '''
-    #     Generate text with an optional JSON schema acceptor.
-    #     '''
-    #     logits_processors = logits_processors or []
-    #     logits_processors = logits_processors.copy()
-    #     logits_processors.append(self.make_logit_bias_processor())
-
-    #     sample = functools.partial(
-    #         self._sample_with_bias, temp=temp
-    #     )
-    #     while True:
-    #         tokens = [sample(logits[0, -1, :])]
-    #         yield tokens
-    #         if tokens[-1] == self.eos_id:
-    #             break
-    #         logits = self.model(mx.array(tokens)[None], cache=cache)
-
     def logit_bias_processor(self, tokens: mx.array, logits: mx.array) -> mx.array:
         '''
         Apply a -inf bias to tokens that will not be accepted
@@ -218,10 +189,12 @@ class Model:
             # Just past the stream_generate look-ahead step. Have to advance the state here,
             # because the chosen token won't have bubbled up to completion() whare that usually happens
             # Advance the acceptor state, so it's ready for the next biasing step
-            try:
-                self.curr_token_acceptor.advance_token(tokens.tolist()[-1])
-            except JsonSchemaAcceptorDriver.TokenRejected:
-                raise
+            prev_tok = tokens.tolist()[-1]
+            if prev_tok != self.eos_id:
+                try:
+                    self.curr_token_acceptor.advance_token(prev_tok)
+                except JsonSchemaAcceptorDriver.TokenRejected:
+                    raise
 
         self._step_count += 1
 
@@ -277,30 +250,6 @@ class Model:
         self._step_count = 0
         for generation_resp in stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs):
             yield generation_resp
-
-        # for generation_resp in logits_generator:
-        #     # generation_resp is a GenerationResponse object
-        #     # text (str): The next segment of decoded text. This can be an empty string.
-        #     # token (int): The next token.
-        #     # logprobs (mx.array): A vector of log probabilities.
-        #     # prompt_tokens (int): The number of tokens in the prompt.
-        #     # prompt_tps (float): The prompt processing tokens-per-second.
-        #     # generation_tokens (int): The number of generated tokens.
-        #     # generation_tps (float): The tokens-per-second for generation.
-        #     # peak_memory (float): The peak memory used so far in GB.
-        #     # finish_reason (str): The reason the response is being sent: "length", "stop" or `None`
-
-        #     # Skip token acceptor advancement during prefill
-        #     # print(generation_resp.token)
-        #     if generation_resp.token is not None: # Generation phase started
-        #         self._in_prefill = False
-        #         try:
-        #             # print('Picked:', list(self.detokenize_dammit([self.generation_resp.token])))
-        #             self.curr_token_acceptor.advance_token(generation_resp.token)
-        #         except JsonSchemaAcceptorDriver.TokenRejected:
-        #             raise  # Explicit re-raise for now
-
-        #     yield generation_resp
 
     def _peek_top_logits(self, logits):
         # Debug: Print top logits and their token indices

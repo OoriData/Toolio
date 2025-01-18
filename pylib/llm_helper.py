@@ -232,7 +232,16 @@ class model_manager(toolcall_mixin):
         Actually trigger the low-level sampling, yielding response chunks
         '''
         for resp in self.model.completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
-            if resp is not None:
+            if resp is not None:  # GenerationResponse object
+                    # text (str): The next segment of decoded text. This can be an empty string.
+                    # token (int): The next token.
+                    # logprobs (mx.array): A vector of log probabilities.
+                    # prompt_tokens (int): The number of tokens in the prompt.
+                    # prompt_tps (float): The prompt processing tokens-per-second.
+                    # generation_tokens (int): The number of generated tokens.
+                    # generation_tps (float): The tokens-per-second for generation.
+                    # peak_memory (float): The peak memory used so far in GB.
+                    # finish_reason (str): The reason the response is being sent: "length", "stop" or `None`
                 if simple:
                     resp = resp.text
                 else:

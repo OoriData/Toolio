@@ -190,6 +190,7 @@ async def response_text(resp_stream):
     return ''.join(chunks)
 
 
-async def iter_print(resp_stream):
+async def iter_print(resp_stream, end='\n', file=None):
     async for chunk in resp_stream:
-        print(chunk, end='', flush=True)
+        print(chunk, end='', flush=True, file=file)
+    print('', end=end)
