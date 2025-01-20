@@ -103,14 +103,17 @@ class Model:
         cache_prompt: bool = False,
         **kwargs,  # From MLX_LM_GENERATE_KWARGS
     ):
+        # XXX: Do we want to look into reentrancy of this method?
         for k in kwargs:
             if k not in MLX_LM_GENERATE_KWARGS:
                 raise ValueError(f'Unknown keyword argument: {k}')
 
         logits_processors = kwargs.get('logits_processors', [])
-        logits_processors = logits_processors.copy()
-        logits_processors.append(self.logit_bias_processor)
-        kwargs['logits_processors'] = logits_processors
+        self.curr_token_acceptor = self.json_schema_acceptor_driver_factory(schema, encapsulated) if schema else None
+        if self.curr_token_acceptor:
+            logits_processors = logits_processors.copy()
+            logits_processors.append(self.logit_bias_processor)
+            kwargs['logits_processors'] = logits_processors
 
         if self.tokenizer is None:  # Not loaded
             raise RuntimeError('Model not loaded')
@@ -120,9 +123,6 @@ class Model:
 
         prompt_tokens = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True)
         self._prompt_length = len(prompt_tokens)  # Store prompt length
-
-        # FIXME: Non-reentrant
-        self.curr_token_acceptor = self.json_schema_acceptor_driver_factory(schema, encapsulated) if schema else None
 
         logits_generator = stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs)
 

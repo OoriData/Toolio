@@ -207,15 +207,18 @@ class model_manager(toolcall_mixin):
             tools (list): List of tool names or specs to make available
             **kwargs: Additional arguments passed to __call__
         '''
+        resp = None
         async for resp in self.iter_complete_with_tools(messages, tools=tools,
             max_trips=max_trips, tool_choice=tool_choice, temperature=temperature, **kwargs):
             break
 
         if isinstance(resp, str):
             return resp
-        else:
-            # Extract text from response object
-            return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message'].get('content')
+        elif resp is None:
+            raise RuntimeError('No response from LLM')
+        # else:
+        #     # Extract text from response object
+        #     return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message'].get('content')
 
     async def _completion_trip(self, messages, req_tool_spec, **kwargs):
         # schema, tool_sysmsg = process_tool_sysmsg(req_tool_spec, self.logger, leadin=self.sysmsg_leadin)
@@ -233,15 +236,15 @@ class model_manager(toolcall_mixin):
         '''
         for resp in self.model.completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
             if resp is not None:  # GenerationResponse object
-                    # text (str): The next segment of decoded text. This can be an empty string.
-                    # token (int): The next token.
-                    # logprobs (mx.array): A vector of log probabilities.
-                    # prompt_tokens (int): The number of tokens in the prompt.
-                    # prompt_tps (float): The prompt processing tokens-per-second.
-                    # generation_tokens (int): The number of generated tokens.
-                    # generation_tps (float): The tokens-per-second for generation.
-                    # peak_memory (float): The peak memory used so far in GB.
-                    # finish_reason (str): The reason the response is being sent: 'length', 'stop' or `None`
+                # text (str): The next segment of decoded text. This can be an empty string.
+                # token (int): The next token.
+                # logprobs (mx.array): A vector of log probabilities.
+                # prompt_tokens (int): The number of tokens in the prompt.
+                # prompt_tps (float): The prompt processing tokens-per-second.
+                # generation_tokens (int): The number of generated tokens.
+                # generation_tps (float): The tokens-per-second for generation.
+                # peak_memory (float): The peak memory used so far in GB.
+                # finish_reason (str): The reason the response is being sent: 'length', 'stop' or `None`
                 if simple:
                     resp = resp.text
                 else:

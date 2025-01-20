@@ -8,7 +8,7 @@ import cProfile
 
 import mlx.core as mx
 from toolio.llm_helper import local_model_runner
-from toolio.common import iter_print
+from toolio.common import print_response
 
 try:
     pstats_fname = sys.argv[1]
@@ -40,7 +40,7 @@ async def main():
 
     profiler = cProfile.Profile()
     profiler.enable()
-    await iter_print(toolio_mm.iter_complete([{'role': 'user', 'content': prompt}], json_schema=SCHEMA_PY))
+    await print_response(toolio_mm.iter_complete([{'role': 'user', 'content': prompt}], json_schema=SCHEMA_PY))
     profiler.disable()
     profiler.dump_stats(pstats_fname)
 

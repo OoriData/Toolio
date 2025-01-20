@@ -5,7 +5,7 @@ It also shows how you can set a random seed for reproducible results
 import asyncio
 import mlx.core as mx
 from toolio.llm_helper import local_model_runner
-from toolio.common import iter_print
+from toolio.common import print_response
 
 RANDOM_SEED = 42
 
@@ -23,12 +23,12 @@ SCHEMA_PY = {
     }
 }
 
-async def say_hello(tmm):
+async def main():
     mx.random.seed(RANDOM_SEED)
     sentence = 'Adamma went home to Nigeria for the hols'
     prompt = f'Which countries are mentioned in the sentence \'{sentence}\'?\n'
     prompt += 'Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#'
     # iter_complete() method accepts a JSON schema in string form or as the equivalent Python dictionary
-    await iter_print(tmm.iter_complete([{'role': 'user', 'content': prompt}], json_schema=SCHEMA_PY))
+    await print_response(toolio_mm.iter_complete([{'role': 'user', 'content': prompt}], json_schema=SCHEMA_PY))
 
-asyncio.run(say_hello(toolio_mm))
+asyncio.run(main())

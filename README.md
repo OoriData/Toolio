@@ -3,7 +3,7 @@
 
 Toolio is an OpenAI-like HTTP server API implementation which supports structured LLM response generation (e.g. make it conform to a [JSON schema](https://json-schema.org/)). It also implements tool calling by LLMs. Toolio is based on the MLX framework for Apple Silicon (e.g. M1/M2/M3/M4 Macs), so **that's the only supported platform at present**.
 
-Whether the buzzword you're pursuing is tool-calling, function-calling, agentic workflows, compound AI, guaranteed structured output, schema-driven output, guided generation, or steered response, give Toolio a try. You can think of it as your "GPT Private Agent", handling intelligent tasks for you, without spilling your secrets.
+Whether the buzzword you're pursuing is tool-calling, function-calling, agentic workflows, compound AI, guaranteed structured output, schema-driven output, guided generation, or steered response, give Toolio a try, in your own private setting.
 
 Builds on: https://github.com/otriscon/llm-structured-output/
 
@@ -349,32 +349,32 @@ Toolio uses OpenAI API conventions a lot under the hood. If you run the followin
 
 ```py
 import asyncio
-from toolio.llm_helper import local_model_runner, extract_content
+from toolio.llm_helper import local_model_runner
 
 toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
-    # FYI, there is a fnction toolio.common.response_text which can help cnsume iter_* methods
-    async for chunk_struct in tmm.iter_complete(msgs):
+    # FYI, there are functions in toolio.common—response_text & print_response—which can help consume iter_* methods
+    async for chunk_struct in tmm.iter_complete(msgs, simple=False):
         print(chunk_struct)
+        print(chunk_struct.first_choice_text)
         break
 
 asyncio.run(say_hello(toolio_mm))
 ```
 
-from 
-
 You should see something like:
 
 ```py
-{'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': 'Hi'}, 'finish_reason': None}], 'object': 'chat.completion.chunk', 'id': 'chatcmpl-17588006160_1721823730', 'created': 1721823730, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'}
+llm_response(response_type=<llm_response_type.MESSAGE: 1>, choices=[{'index': 0, 'delta': {'role': 'assistant', 'content': 'Hello'}, 'finish_reason': None}], usage={'prompt_tokens': 15, 'completion_tokens': 1, 'total_tokens': 16}, object='chat.completion', id='cmpl-1737387910', created=1737387910, model='mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', model_type='llama', _first_choice_text=None)
+Hello
 ```
 
-The LLM response is delivered in such structures ("deltas") as they're generated. `chunk_struct['choices'][0]['delta']['content']` is a bit of the actual text we teased out in the previous snippet. `chunk_struct['choices'][0]['finish_reason']` is `None` because it's not yet finished, etc. This is based on OpenAI API.
+The LLM response is delivered in such structures ("deltas") as they're generated. The `simple=False` flag tells Toolio to yield the responses in a data structure which includes useful metadata as well as the actual response text. The `first_choice_text` attribute on that object gives the plain text of the response—supporting multiple choices is for OpenAI API compatibility, though Toolio only ever ofers a single choice. Notice that `chunk_struct.choices[0]['finish_reason']` is `None` because it's not yet finished, etc. These are largely OpenAI API conventions, though `first_choice_text` is Toolio (and [OgbujiPT](https://github.com/OoriData/OgbujiPT)) specific.
 
-`extract_content`, used in the previous snippet, is a very simple coroutine that extracts the actual text content from this series of response structures.
 
+<!-- THE FINISH DELTA NEEDS REPAIR AS OF THE JANUARY REFACTOR
 The final chunk would look something like this:
 
 ```py
@@ -385,7 +385,7 @@ Notice there is more information, now that it's finished (`'finish_reason': 'sto
 
 ```py
 import asyncio
-from toolio.llm_helper import local_model_runner, extract_content
+from toolio.llm_helper import local_model_runner
 
 toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
@@ -410,7 +410,7 @@ You'll get something like:
  Number of tokens generated: 32
 ```
 
-Tip: don't forget all the various, useful bits to be found in `itertools` and the like.
+-->
 
 # Structured LLM responses via direct API
 
@@ -422,14 +422,25 @@ from toolio.llm_helper import local_model_runner
 
 toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
 
-async def say_hello(tmm):
+async def extractor(tmm):
     prompt = ('Which countries are mentioned in the sentence \'Adamma went home to Nigeria for the hols\'?'
               'Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#')
     schema = ('{"type": "array", "items":'
               '{"type": "object", "properties": {"name": {"type": "string"}, "continent": {"type": "string"}}, "required": ["name", "continent"]}}')
     print(await tmm.complete([{'role': 'user', 'content': prompt}], json_schema=schema))
 
-asyncio.run(say_hello(toolio_mm))
+asyncio.run(extractor(toolio_mm))
+```
+
+Printing:
+
+```json
+[
+  {
+    "name": "Nigeria",
+    "continent": "Africa"
+  }
+]
 ```
 
 Find an expanded version of this code in `demo/country_extract.py`.
@@ -508,6 +519,35 @@ In which case you can express a response such as:
 
 > By the tool's decree, the square root of 256, a number most fair,
 > Is sixteen, a digit most true, and a figure most rare.
+
+# Making more memory available for Large Models
+
+<!--
+Largely copied from MLX_LM README. SHould probably move to docs.
+-->
+
+> [!NOTE]
+    This requires macOS 15.0 or higher to work.
+
+Models which are large relative to the total RAM available on the machine can
+be slow. The underlying `mlx-lm` code will attempt to make them faster by wiring the memory
+occupied by the model and cache. This requires macOS 15 or higher to
+work.
+
+If you see the following warning message:
+
+> [WARNING] Generating with a model that requires ...
+
+then the model will likely be slow on the given machine. If the model fits in
+RAM then it can often be sped up by increasing the system wired memory limit.
+To increase the limit, set the following `sysctl`:
+
+```bash
+sudo sysctl iogpu.wired_limit_mb=N
+```
+
+The value `N` should be larger than the size of the model in megabytes but
+smaller than the memory size of the machine.
 
 # Learn more
 

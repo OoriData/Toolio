@@ -117,26 +117,27 @@ class llm_response:
         if self._first_choice_text is not None:
             return self._first_choice_text
         if self.response_type == llm_response_type.MESSAGE:
-            return self.choices[0]['message']['content']
+            return self.choices[0]['delta']['content']
         return None
 
     @classmethod
     def from_generation_response(cls, gen_resp, model_name=None, model_type=None):
         '''
-        Convert a MLX_LM utils.GenerationResponse to LLMResponse
+        Convert a MLX_LM utils.GenerationResponse (representing a response delta) to LLMResponse
         
         Args:
             gen_resp: GenerationResponse from utils.generate_step()
             model_name: Optional model name/path
             model_type: Optional model type identifier
         '''
-        # Only create a message if there's text to share
+        # Only create a message delta if there's text to share
         if not gen_resp.text:
             return None
             
         choices = [{
             'index': 0,
-            'message': {'role': 'assistant', 'content': gen_resp.text},
+            # XXX: Pretty sure this should be delta rather than message, but verify
+            'delta': {'role': 'assistant', 'content': gen_resp.text},
             'finish_reason': gen_resp.finish_reason
         }]
 
