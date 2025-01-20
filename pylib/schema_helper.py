@@ -12,8 +12,9 @@ from operator import itemgetter
 from typing import Iterable, Union, Any
 
 import mlx.core as mx
-# from mlx_lm.models.cache import KVCache, _BaseCache
+# from mlx_lm.models.cache import KVCache, _Bas-eCache
 # from mlx_lm.models.cache import make_prompt_cache
+import mlx.core as mx
 from mlx_lm.utils import load, stream_generate # , GenerationResponse
 
 from toolio.vendor.llm_structured_output import JsonSchemaAcceptorDriver
@@ -49,8 +50,9 @@ class RejectedCompletion(Exception):
 
 @functools.lru_cache(maxsize=128)
 def create_mask(accepted_token_bitmap, vocab_size):
-    return mx.array([(accepted_token_bitmap & (1 << i)) != 0 for i in range(vocab_size)])
-
+    token_bitmap_str = '{0:08b}'.format(accepted_token_bitmap)
+    return mx.array([False if i > (len(token_bitmap_str) - 1)
+                     else token_bitmap_str[-1 - i] == '1' for i in range(vocab_size)])
 
 def apply_token_mask(logits, accepted_token_bitmap):
     vocab_size = logits.shape[-1]
