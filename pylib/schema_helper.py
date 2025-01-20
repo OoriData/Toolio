@@ -50,7 +50,7 @@ class RejectedCompletion(Exception):
 
 @functools.lru_cache(maxsize=128)
 def create_mask(accepted_token_bitmap, vocab_size):
-    token_bitmap_str = '{0:08b}'.format(accepted_token_bitmap)
+    token_bitmap_str = '{0:b}'.format(accepted_token_bitmap)
     return mx.array([False if i > (len(token_bitmap_str) - 1)
                      else token_bitmap_str[-1 - i] == '1' for i in range(vocab_size)])
 
