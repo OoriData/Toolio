@@ -20,4 +20,4 @@ except ImportError:
     warnings.warn('Unable to import MLX. If you are running this on Apple Silicon you can just `pip install mlx mlx_lm`\n'
                   'Otherwise you will only be able to run the Toolio HTTP client component.')
 
-from toolio.common import load_or_connect, response_text  # noqa: E402 F401
+from toolio.common import load_or_connect, response_text, print_response  # noqa: E402 F401

@@ -9,7 +9,7 @@ import json
 import logging
 import warnings
 from pathlib import Path  # noqa: E402
-from enum import Flag, auto
+from enum import Flag, auto, Enum
 
 from amara3 import iri
 
@@ -49,6 +49,13 @@ FLAGS_LOOKUP = {
 TOOLIO_MODEL_TYPE_FIELD = 'toolio.model_type'
 
 DEFAULT_JSON_SCHEMA_CUTOUT = '#!JSON_SCHEMA!#'
+
+# XXX: Basically a candidate for replacing the response_type class in ogbujipt
+class llm_response_type(Enum):
+    MESSAGE = 1
+    ERROR = 2
+    TOOL_CALL = 3
+    TOOL_RESULT = 4
 
 
 def load_or_connect(ref: str, **kwargs):
@@ -176,8 +183,21 @@ async def extract_content(resp_stream):
                 yield content
 
 
+# async def response_text(resp_stream):
+#     chunks = []
+#     async for chunk in extract_content(resp_stream):
+#         chunks.append(chunk)
+#     return ''.join(chunks)
+
+
 async def response_text(resp_stream):
     chunks = []
-    async for chunk in extract_content(resp_stream):
+    async for chunk in resp_stream:
         chunks.append(chunk)
     return ''.join(chunks)
+
+
+async def print_response(resp_stream, end='\n', file=None):
+    async for chunk in resp_stream:
+        print(chunk, end='', flush=True, file=file)
+    print('', end=end)
