@@ -13,9 +13,7 @@ from toolio.vendor.llm_structured_output.util.output import info, debug
 from toolio.common import prompt_handler
 from toolio.toolcall import DEFAULT_INTERNAL_TOOLS, process_tools_for_sysmsg
 from toolio.http_schematics import V1ChatMessage, V1ChatCompletionsRequest, V1ResponseFormatType
-from toolio.responder import (ToolCallStreamingResponder, ToolCallResponder,
-                              ChatCompletionResponder, ChatCompletionStreamingResponder)
-
+from toolio.response_helper import llm_response
 
 async def post_v1_chat_completions_impl(state, req_data: V1ChatCompletionsRequest):
     '''
@@ -62,19 +60,10 @@ async def post_v1_chat_completions_impl(state, req_data: V1ChatCompletionsReques
             leadin = None
         # Schema, including no-tool fallback, plus string spec of available tools, for use in constructing sysmsg
         full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(tools, DEFAULT_INTERNAL_TOOLS, leadin=leadin)
-        # debug(f'{sysmsg=}')
-        if req_data.stream:
-            responder = ToolCallStreamingResponder(model_name, model_type, tool_schemas)
-        else:
-            responder = ToolCallResponder(model_name, model_type)
         if not (req_data.tool_options and req_data.tool_options.no_prompt_steering):
             messages = phandler.reconstruct_messages(messages, sysmsg=sysmsg)
         schema = full_schema
     else:
-        if req_data.stream:
-            responder = ChatCompletionStreamingResponder(model_name, model_type)
-        else:
-            responder = ChatCompletionResponder(model_name, model_type)
         if req_data.response_format:
             assert req_data.response_format.type == V1ResponseFormatType.JSON_OBJECT
             # The req_data may specify a JSON schema (this option is not in the OpenAI API)
@@ -87,31 +76,24 @@ async def post_v1_chat_completions_impl(state, req_data: V1ChatCompletionsReques
     if schema is None:
         debug('No JSON schema provided. Generating without one.')
     else:
-        debug('Using schema:', schema)
+        debug('Using schema:', str(schema)[:200])
 
     info('Starting generation…')
 
-    prompt_tokens = None
+    kwargs = {'max_tokens': req_data.max_tokens, 'temp': req_data.temperature}
 
-    for result in state.model.completion(
-        messages,
-        schema=schema,
-        max_tokens=req_data.max_tokens,
-        temp=req_data.temperature,
-        # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
-        # cache_prompt=True,
-        cache_prompt=False,
-    ):
-        if result['op'] == 'evaluatedPrompt':
-            prompt_tokens = result['token_count']
-        elif result['op'] == 'generatedTokens':
-            message = responder.generated_tokens(result['text'])
-            if message:
-                yield message
-        elif result['op'] == 'stop':
-            completion_tokens = result['token_count']
-            yield responder.generation_stopped(
-                result['reason'], prompt_tokens, completion_tokens
-            )
-        else:
-            assert False
+    # XXX: Add feature to request that the server cache a prompt to be passed in here: cache_prompt
+    for resp in state.model.completion(messages, schema, **kwargs):
+        if resp is not None:  # GenerationResponse object
+            # text (str): The next segment of decoded text. This can be an empty string.
+            # token (int): The next token.
+            # logprobs (mx.array): A vector of log probabilities.
+            # prompt_tokens (int): The number of tokens in the prompt.
+            # prompt_tps (float): The prompt processing tokens-per-second.
+            # generation_tokens (int): The number of generated tokens.
+            # generation_tps (float): The tokens-per-second for generation.
+            # peak_memory (float): The peak memory used so far in GB.
+            # finish_reason (str): The reason the response is being sent: 'length', 'stop' or `None`
+
+            # XXX: Add accumulation of e.g.token counts for final message construction
+            yield resp.text

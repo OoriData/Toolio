@@ -12,9 +12,8 @@ from operator import itemgetter
 from typing import Iterable, Union, Any
 
 import mlx.core as mx
-# from mlx_lm.models.cache import KVCache, _Bas-eCache
+# from mlx_lm.models.cache import KVCache, _BaseCache
 # from mlx_lm.models.cache import make_prompt_cache
-import mlx.core as mx
 from mlx_lm.utils import load, stream_generate # , GenerationResponse
 
 from toolio.vendor.llm_structured_output import JsonSchemaAcceptorDriver

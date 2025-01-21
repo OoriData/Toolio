@@ -136,8 +136,10 @@ class model_manager(toolcall_mixin):
                 break
 
             async for resp in self._completion_trip(messages, req_tool_spec, **kwargs):
+                if not resp:
+                    break
                 if first_resp is None: first_resp = resp  # noqa E701
-                resp_msg = resp['choices'][0].get('message')
+                resp_msg = resp.choices[0].get('message')
                 # resp_msg can be None e.g. if generation finishes due to length
                 if resp_msg:
                     if 'tool_calls' in resp_msg:
@@ -164,7 +166,7 @@ class model_manager(toolcall_mixin):
                             req_tool_spec = [s for f, s in req_tools.values()]
                         break
                     else:
-                        assert 'delta' in resp['choices'][0]
+                        assert 'delta' in resp.choices[0]
                         yield resp
 
                 # if resp['choices'][0]['finish_reason'] == 'stop':
