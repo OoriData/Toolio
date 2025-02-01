@@ -336,8 +336,8 @@ def process_tools_for_sysmsg(tools, internal_tools, separator='\n', **kwargs):
         no_tool_desc: description to use for the default get-out-of-jail model response
     '''
     # Start by normalizing away from Pydantic form
-    tools = [ (t.dictify() if isinstance(t, V1Function) else t) for t in tools ]
-    tools.extend(internal_tools)
+    normalized_tools = [(t.dictify() if isinstance(t, V1Function) else t) for t in tools]
+    combined_tools = normalized_tools + list(internal_tools)
     tool_schemas = [
         {
             'type': 'object',
@@ -349,7 +349,7 @@ def process_tools_for_sysmsg(tools, internal_tools, separator='\n', **kwargs):
             },
             'required': ['name', 'arguments'],
         }
-        for fn in tools
+        for fn in combined_tools
     ]
     # XXX: Do we need to differentiate prompt setup for 1 vs multiple tools?
     # if len(tool_schemas) - len(internal_tools) == 1:

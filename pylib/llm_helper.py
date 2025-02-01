@@ -85,7 +85,7 @@ class model_manager(toolcall_mixin):
             yield resp
 
     async def iter_complete_with_tools(self, messages, tools=None, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
-                                       temperature=None, insert_schema=True, **kwargs):
+                                    temperature=None, insert_schema=True, **kwargs):
         '''
         Make a chat completion with tools, then continue to iterate completions as long as the LLM
         is using at least one tool, or until max_trips are exhausted
@@ -108,7 +108,7 @@ class model_manager(toolcall_mixin):
         '''
         toolset = tools or self.toolset
         req_tools = self._resolve_tools(toolset)
-        req_tool_spec = [ s for f, s in req_tools.values() ]
+        req_tool_spec = [s for f, s in req_tools.values()]
 
         if temperature is not None:
             assert 'sampler' not in kwargs
@@ -116,70 +116,57 @@ class model_manager(toolcall_mixin):
 
         if max_trips < 1:
             raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
-        final_resp = None
-        while max_trips:
-            tool_call_resp = None
-            # {'choices': [{'index': 0, 'message': {'role': 'assistant',
-            # 'tool_calls': [{'id': 'call_6434200784_1722311129_0', 'type': 'function',
-            # 'function': {'name': 'square_root', 'arguments': '{'square': 256}'}}]}, 'finish_reason': 'tool_calls'}],
-            # 'usage': {'completion_tokens': 24, 'prompt_tokens': 15, 'total_tokens': 39},
-            # 'object': 'chat.completion', 'id': 'chatcmpl-6434200784_1722311129', 'created': 1722311129,
-            # 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'}
-            first_resp = None
+
+        trips_remaining = max_trips
+        while trips_remaining > 0:
+            trips_remaining -= 1
+            resp = None
 
             if not req_tool_spec:
                 # No tools (presumably all removed in prior loops), so just do a regular completion
                 async for resp in self.iter_complete(messages, insert_schema=insert_schema, temperature=temperature, **kwargs):
-                    if first_resp is None: first_resp = resp  # noqa E701
                     yield resp
-                assert first_resp is not None, 'No response from LLM'
+                assert resp is not None, 'No response from LLM'
                 break
 
+            # Do a completion trip with tools
+            first_resp = None
             async for resp in self._completion_trip(messages, req_tool_spec, **kwargs):
                 if not resp:
                     break
                 if first_resp is None: first_resp = resp  # noqa E701
+
                 resp_msg = resp.choices[0].get('message')
                 # resp_msg can be None e.g. if generation finishes due to length
-                if resp_msg:
-                    if 'tool_calls' in resp_msg:
-                        max_trips -= 1
-                        bypass_response = self._check_tool_handling_bypass(first_resp)
-                        if bypass_response:
-                            # LLM called an internal tool either as a bypass, or for finishing up; treat as direct response
-                            final_resp = bypass_response
-                            break
+                if resp_msg and 'tool_calls' in resp_msg:
+                    bypass_response = self._check_tool_handling_bypass(first_resp)
+                    if bypass_response:
+                        # LLM called an internal tool either as a bypass, or for finishing up; treat as direct response
+                        yield bypass_response
+                        return
 
-                        if max_trips <= 0:
-                            # No more available trips; don't bother calling tools
-                            warnings.warn('Maximum LLM trips exhausted without a final answer')
-                            final_resp = resp
-                            break
-
-                        called_names = await self._handle_tool_responses(messages, first_resp, req_tools, req_tool_spec)
-
-                        # Possibly move into _handle_tool_responses? If so, same in llm_helper.py
-                        if self._remove_used_tools:
-                            # Many FLOSS LLMs get confused if they see a tool definition still in the response back
-                            # And loop back with a new tool request. Remove it to avoid this.
-                            req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
-                            req_tool_spec = [s for f, s in req_tools.values()]
-                        break
-                    else:
-                        assert 'delta' in resp.choices[0]
+                    if trips_remaining <= 0:
+                        # No more available trips; don't bother calling tools
+                        # XXX: Probably pick from warning or debug
+                        self.logger.debug('Maximum LLM trips exhausted without a final answer')
+                        warnings.warn('Maximum LLM trips exhausted without a final answer')
                         yield resp
+                        return
 
-                # if resp['choices'][0]['finish_reason'] == 'stop':
-                #     break
+                    called_names = await self._handle_tool_responses(messages, first_resp, req_tools, req_tool_spec)
 
-            assert first_resp is not None, 'No response from LLM'
+                    # XXX: Possibly move into _handle_tool_responses?
+                    if self._remove_used_tools:
+                        # Many FLOSS LLMs get confused if they see a tool definition still in the response back
+                        # And loop back with a new request for the same tool they just called. Remove it to avoid this.
+                        req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
+                        req_tool_spec = [s for f, s in req_tools.values()]
+                    break
+                else:
+                    yield resp
 
-            if final_resp is not None:
-                yield final_resp
+            if not first_resp:
                 break
-
-        else:
-            yield resp
 
     async def complete(self, messages, json_schema=None, insert_schema=True, temperature=None, **kwargs):
         '''
@@ -234,7 +221,7 @@ class model_manager(toolcall_mixin):
 
     async def _do_completion(self, messages, schema, cache_prompt=False, simple=True, **kwargs):
         '''
-        Actually trigger the low-level sampling, yielding response chunks
+        Invoke the low-level sampling, yielding response chunks
         '''
         for resp in self.model.completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
             if resp is not None:  # GenerationResponse object
@@ -255,7 +242,8 @@ class model_manager(toolcall_mixin):
                         model_name=self.model_path,
                         model_type=self.model_type
                     )
-                yield resp
+                if resp:  # Only yield if there's actual content
+                    yield resp
 
 
 class local_model_runner(model_manager):
