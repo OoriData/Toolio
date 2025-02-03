@@ -24,36 +24,77 @@ resp_json = resp.to_json()
 '''
 import time
 import json
-from dataclasses import dataclass
+import warnings
+from dataclasses import dataclass, field
+from typing import Optional, Dict
+from enum import Enum, auto
+
 
 # from ogbujipt.config import attr_dict
 from ogbujipt.llm_wrapper import response_type
 
 from toolio.common import llm_response_type, TOOLIO_MODEL_TYPE_FIELD
+from toolio.toolcall import tool_call_response_mixin, parse_genresp_tool_calls  # t, ool_call
 
-# XXX: Basically a candidate for replacing the llm_response class in ogbujipt
+class response_state(Enum):
+    '''States for tracking response generation'''
+    INIT = auto()
+    GATHERING_TOOL_CALLS = auto()
+    GATHERING_MESSAGE = auto()
+    COMPLETE = auto()
+
+
+# XXX: Candidate for replacing the llm_response class in ogbujipt
 @dataclass
-class llm_response:
+class llm_response(tool_call_response_mixin):
     '''
     Uniform interface for LLM responses from OpenAI APIs, MLX, etc.
     '''
-    response_type: llm_response_type
-    choices: list
-    usage: dict = None  
-    object: str = None
+    # dataclass behavior: fields declared here become parameters to __init__ in the order listed
+    response_type: llm_response_type  # Required parameter
+    choices: list                     # Required parameter
+    usage: dict = None                # Optional parameter with default
+    object: str = None                # Optional parameter with default
     id: str = None
     created: int = None
     model: str = None
     model_type: str = None
+
     _first_choice_text: str = None
+    tool_schema: dict = None
+    tool_calls: list = None
+    tool_results: list = None
+
+    # State tracking fields
+    # For fields that need instance-specific mutable defaults, use field() with default_factory
+    # This avoids the mutable default argument pitfall: https://docs.python-guide.org/writing/gotchas/#mutable-default-arguments
+    state: response_state = field(default_factory=lambda: response_state.INIT)
+    accumulated_text: str = ''
+
+    # Tool calling state fields from mixin
+    current_function_index: int = -1
+    current_function_name: str = None
+    in_function_arguments: bool = False
+
+    # For stateful tracking of args during tool call streaming
+    _accumulated_args: dict = field(default_factory=dict, repr=False)  # repr=False to exclude from __repr__
+
+    # __post_init__ not needed in this case b/c mixin is providing behavior rather than state,
+    # Fields this live in this dataclass; mixin just provides methods that operate on those fields.
+    # def __post_init__(self):
+    #     '''
+    #     Called automatically after __init__ - use this for any
+    #     initialization that depends on fields being set
+    #     '''
+    #     super().__init__()  # Initialize the mixin if needed
 
     @staticmethod
     def from_openai_chat(response):
         '''
         Convert an OpenAI API ChatCompletion object to an llm_response object
         '''
-        resp_type = response_type.MESSAGE  # Default assumption
-        
+        resp_type = llm_response_type.MESSAGE  # Default assumption
+
         # Extract usage stats if present
         usage = None
         if 'usage' in response:
@@ -76,7 +117,7 @@ class llm_response:
             
             # Check for tool calls
             if rc1.get('message', {}).get('tool_calls'):
-                resp_type = response_type.TOOL_CALL
+                resp_type = llm_response_type.TOOL_CALL
                 # Process tool call arguments
                 # WTH does OpenAI have these arguments properties as plain text? Seems a massive layering violation
                 for tc in rc1['message']['tool_calls']:
@@ -121,46 +162,96 @@ class llm_response:
         return None
 
     @classmethod
-    def from_generation_response(cls, gen_resp, model_name=None, model_type=None):
+    def from_generation_response(cls, gen_resp, model_name=None, model_type=None,
+                               tool_schema: Optional[Dict] = None) -> Optional['llm_response']:
         '''
-        Convert a MLX_LM utils.GenerationResponse (representing a response delta) to LLMResponse
-        
+        Convert a MLX_LM utils.GenerationResponse (representing a response delta) to llm_response or tool_call_response
+
         Args:
             gen_resp: GenerationResponse from utils.generate_step()
             model_name: Optional model name/path
             model_type: Optional model type identifier
+            tool_schema: Optional tool schema for parsing tool calls
         '''
-        # Only create a message delta if there's text to share
-        if not gen_resp.text:
+        if not gen_resp.text:  # Skip empty responses
             return None
-            
-        choices = [{
-            'index': 0,
-            # XXX: Pretty sure this should be delta rather than message, but verify
-            'delta': {'role': 'assistant', 'content': gen_resp.text},
-            'finish_reason': gen_resp.finish_reason
-        }]
 
-        usage = None
-        if gen_resp.prompt_tokens is not None:
-            usage = {
-                'prompt_tokens': gen_resp.prompt_tokens,
-                'completion_tokens': gen_resp.generation_tokens,
-                'total_tokens': gen_resp.prompt_tokens + gen_resp.generation_tokens
-            }
-
-        created = int(time.time())
-
-        return cls(
-            response_type=llm_response_type.MESSAGE,
-            choices=choices,
-            usage=usage,
+        resp_t = time.time_ns()
+        # print(f'from_generation_response\t{tool_schema=}')
+        resp = cls(
+            response_type=llm_response_type.MESSAGE,  # Default to message
+            choices=[{
+                'index': 0,
+                'delta': {'role': 'assistant'},
+                'finish_reason': None
+            }],
             object='chat.completion',
-            id=f'cmpl-{created}',
-            created=created,
+            id=f'cmpl-{int(resp_t)}',
+            created=int(resp_t / 1e9),
             model=model_name,
             model_type=model_type
         )
+
+        if tool_schema:
+            resp.tool_schema = tool_schema
+            resp.state = response_state.GATHERING_TOOL_CALLS
+        else:
+            resp.state = response_state.GATHERING_MESSAGE
+
+        resp.update_from_gen_response(gen_resp)
+        return resp
+
+    def update_from_gen_response(self, gen_resp):
+        '''
+        Update this response with a new generation chunk from MLX
+
+        Args:
+            gen_resp: GenerationResponse containing new content
+        '''
+        if not gen_resp.text:
+            return
+
+        choice0 = self.choices[0]
+        delt = choice0.get('delta', choice0.get('message'))
+        if self.state == response_state.GATHERING_TOOL_CALLS:
+            self.accumulated_text += gen_resp.text
+
+            # Try parsing accumulated text as tool calls
+            # FIXME: Inefficient to be re-trying the parse for eaxh token. Find a way to get a completion signal before parsing
+            tool_calls = parse_genresp_tool_calls(self.accumulated_text)
+
+            if tool_calls:
+                # Successfully parsed complete tool calls
+                # assert 'delta' in choice0
+                self.response_type = llm_response_type.TOOL_CALL
+                delt['tool_calls'] = [tc.to_dict() for tc in tool_calls]
+                choice0['finish_reason'] = 'tool_calls'
+                self.tool_calls = tool_calls
+                self.state = response_state.COMPLETE
+                return
+
+        elif self.state == response_state.GATHERING_MESSAGE:
+            # assert 'message' in choice0
+            # Regular message content
+            if 'content' not in delt:
+                delt['content'] = gen_resp.text
+            else:
+                delt['content'] += gen_resp.text
+
+        # Update finish reason and usage stats
+        choice0['finish_reason'] = gen_resp.finish_reason
+        if gen_resp.prompt_tokens is not None:
+            if not self.usage:
+                self.usage = {
+                    'prompt_tokens': gen_resp.prompt_tokens,
+                    'completion_tokens': gen_resp.generation_tokens,
+                    'total_tokens': gen_resp.prompt_tokens + gen_resp.generation_tokens
+                }
+            else:
+                self.usage['completion_tokens'] = gen_resp.generation_tokens
+                self.usage['total_tokens'] = (
+                    self.usage['prompt_tokens'] + gen_resp.generation_tokens
+                )
 
     def to_dict(self) -> dict:
         '''Convert to dictionary format'''

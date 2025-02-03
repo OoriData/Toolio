@@ -4,13 +4,13 @@
 # toolio.prompt_helper
 
 import json
+import time
 import importlib
 import warnings
 from dataclasses import dataclass
 from typing import Optional, List, Any, Dict, Callable
 from time import time_ns
 
-from toolio.response_helper import llm_response, llm_response_type
 from toolio.http_schematics import V1Function
 
 from toolio.common import llm_response_type, model_runner_base, LANG, model_flag, DEFAULT_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT
@@ -91,7 +91,7 @@ class mixin(model_runner_base):
         '''
         if funcpath_or_obj is None:
             funcobj = funcpath_or_obj
-            warnings.warn(f'No implementation provided for function: {getattr(funcobj, "name", "UNNAMED")}')
+            warnings.warn(f'No implementation provided for function: {getattr(funcobj, 'name', 'UNNAMED')}')
         elif isinstance(funcpath_or_obj, str):
             funcpath = funcpath_or_obj
             if '|' in funcpath:
@@ -155,9 +155,9 @@ class mixin(model_runner_base):
         Check for this case, and return the bypass response, which is just the non-tool response the LLM
         opts to give
         '''
-        for tc in response['choices'][0].get('message', {}).get('tool_calls'):
-            if tc['function']['name'] in (TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME):
-                args = json.loads(tc['function']['arguments'])
+        for tc in response.tool_calls:
+            if tc.name in (TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME):
+                args = json.loads(tc.arguments)
                 direct_resp_text = args['response']
                 self.logger.debug(f'LLM chose to bypass function-calling witht he following response: {direct_resp_text}')
                 # Reconstruct an OpenAI-style response
@@ -176,41 +176,36 @@ class mixin(model_runner_base):
     async def _execute_tool_calls(self, response, req_tools):
         # print('update_tool_calls', response)
         tool_responses = []
-        for tc in response['choices'][0].get('message', {}).get('tool_calls'):
-            call_id = tc['id']
-            callee_name = tc['function']['name']
-            if 'arguments' in tc['function']:
-                callee_args = json.loads(tc['function']['arguments'])
-            else:
-                callee_args = tc['function']['arguments_obj']
-            tool, _ = req_tools.get(callee_name, (None, None))
+        for tc in response.tool_calls:
+            call_id = tc.id
+            tool, _ = req_tools.get(tc.name, (None, None))
             if tool is None:
-                warnings.warn(f'Tool called, but it has no function implementation: {callee_name}')
+                warnings.warn(f'Tool called, but it has no function implementation: {tc.name}')
                 continue
             if self.logger:
-                self.logger.debug(f'🔧 Calling tool {callee_name} with args {callee_args}')
+                self.logger.debug(f'🔧 Calling tool {tc.name} with args {tc.arguments}')
             # FIXME: Parallelize async calls rather than blocking on each
             is_callable, is_async_callable = check_callable(tool)
             try:
                 if is_async_callable:
-                    result = await tool(**callee_args)
+                    result = await tool(**tc.arguments)
                 elif is_callable:
-                    result = tool(**callee_args)
+                    result = tool(**tc.arguments)
             except TypeError as e:
                 # For special case where function takes exactly 1 argument, can just skip keyword form
-                if len(callee_args) == 1 and 'no keyword arguments' in str(e):
+                if len(tc.arguments) == 1 and 'no keyword arguments' in str(e):
                     if is_async_callable:
-                        result = await tool(next(iter(callee_args.values())))
+                        result = await tool(next(iter(tc.arguments.values())))
                     elif is_callable:
-                        result = tool(next(iter(callee_args.values())))
+                        result = tool(next(iter(tc.arguments.values())))
                 else:
                     raise
             if self.logger:
                 self.logger.debug(f'✅ Tool call result: {result}')
 
-            tool_responses.append((call_id, callee_name, callee_args, result))
+            tool_responses.append((call_id, tc.name, tc.arguments, result))
             # print('Tool result:', result)
-            # self._pending_tool_calls[tc['id']] = (tool, callee_args)
+            # self._pending_tool_calls[tc.id] = (tool, tc.arguments)
         return tool_responses
 
     async def _handle_tool_responses(self, messages, response, req_tools, req_tool_spec=None):
@@ -398,57 +393,70 @@ class tool_call:
         }
 
 
-class tool_call_response(llm_response):
+def parse_genresp_tool_calls(text: str) -> list[tool_call] | None:
+    '''Parse tool calls from text if present'''
+    try:
+        # Only attempt tool call parsing if we have what looks like complete JSON
+        text = text.strip()
+        if text and text[-1] in [']', '}']:  # Wait for closing bracket/brace
+            try:
+                data = json.loads(text)
+                # Normalize to list
+                if not isinstance(data, list):
+                    data = [data]
+
+                tool_calls = []
+                for tc in data:
+                    if not ('name' in tc and 'arguments' in tc):
+                        break  # Not tool call format
+                    tool_calls.append(tool_call(
+                        id=f'call_{int(time.time_ns())}_{len(tool_calls)}',
+                        name=tc['name'],
+                        arguments=tc['arguments']
+                    ))
+                return tool_calls
+            except json.JSONDecodeError:
+                pass  # Not valid JSON yet
+    except Exception as e:
+        warnings.warn(f'Error parsing tool call JSON from LLM: {str(e)}')
+    return
+
+
+class tool_call_response_mixin:
     '''
-    Specialized response type for tool-calling interactions.
+    Specialized response type for handling tool-calling interactions.
     Handles OpenAI-style function calling with MLX schema hooks.
-
-    State tracking fields for streaming:
-    - `current_function_index`
-    - `current_function_name`
-    - `in_function_arguments`
-
-    `update_from_streaming()` - Handles streaming updates during tool calls
-
-    Sample usage:
-
-    ```python
-    # In llm_helper.py or similar
-
-    def _completion_trip(self, messages, req_tool_spec, **kwargs):
-        # Create hooked schema for tool selection tracking
-        tool_schema = ToolCallResponse.prepare_hooked_schemas(req_tool_spec)
-        
-        for gen_resp in self.model.completion(messages, tool_schema, **kwargs):
-            resp = ToolCallResponse.from_generation_response(
-                gen_resp,
-                model_name=self.model_path,
-                model_type=self.model_type,
-                tool_schema=tool_schema
-            )
-            
-            if resp is not None:
-                if kwargs.get('stream'):
-                    # For streaming, process through update_from_streaming
-                    message = resp.update_from_streaming(gen_resp.text)
-                    if message:
-                        yield message
-                else:
-                    yield resp
-    ```
+    Provides tool calling behavior for responses. No initialization needed
+    since all state is maintained in the llm_response dataclass.
     '''
-    def __init__(
-        self,
-        response_type: llm_response_type,
-        choices: List[dict],
-        tool_calls: Optional[List[tool_call]] = None,
-        tool_results: Optional[List[Any]] = None,
-        **kwargs
-    ):
-        super().__init__(response_type=response_type, choices=choices, **kwargs)
-        self.tool_calls = tool_calls
-        self.tool_results = tool_results
-        # State for tracking tool selection during generation
+    def finalize_tool_call(self):
+        '''
+        Called when a tool call sequence is complete to construct the final tool calls structure
+        '''
+        if not hasattr(self, '_accumulated_args'):
+            return
+
+        # Convert accumulated arguments into final tool calls structure
+        tool_calls = []
+        for (index, name), args in self._accumulated_args.items():
+            tool_calls.append({
+                'id': f'call_{self.id}_{index}',
+                'type': 'function',
+                'function': {
+                    'name': name,
+                    'arguments': args
+                }
+            })
+
+        if tool_calls:
+            self.choices[0]['message']['tool_calls'] = tool_calls
+            self.choices[0]['finish_reason'] = 'tool_calls'
+            self.tool_calls = [
+                tool_call.from_dict(tc) for tc in tool_calls
+            ]
+
+        # Clean up tracking state
+        del self._accumulated_args
         self.current_function_index = -1
         self.current_function_name = None
         self.in_function_arguments = False
@@ -502,97 +510,6 @@ class tool_call_response(llm_response):
             }
 
         return schema
-
-    @classmethod
-    def from_generation_response(
-        cls,
-        gen_resp,
-        model_name=None,
-        model_type=None,
-        tool_schema: Optional[Dict] = None,
-    ) -> Optional['tool_call_response']:
-        '''Convert GenerationResponse to ToolCallResponse'''
-        # Skip empty responses
-        if not gen_resp.text:
-            return None
-
-        # Attempt tool call parsing if we have a schema
-        if tool_schema:
-            try:
-                data = json.loads(gen_resp.text)
-                # Normalize to list
-                if not isinstance(data, list):
-                    data = [data]
-                    
-                tool_calls = []
-                for tc in data:
-                    if not ('name' in tc and 'arguments' in tc):
-                        break  # Not tool call format
-                    tool_calls.append(tool_call(
-                        id=f'call_{int(time_ns())}_{len(tool_calls)}',
-                        name=tc['name'],
-                        arguments=tc['arguments']
-                    ))
-                
-                if tool_calls:
-                    # Valid tool calls found
-                    choices = [{
-                        'index': 0,
-                        'message': {
-                            'role': 'assistant',
-                            'tool_calls': [tc.to_dict() for tc in tool_calls]
-                        },
-                        'finish_reason': gen_resp.finish_reason or 'tool_calls'
-                    }]
-
-                    return cls(
-                        response_type=llm_response_type.TOOL_CALL,
-                        choices=choices,
-                        tool_calls=tool_calls,
-                        object='chat.completion',
-                        id=f'cmpl-{int(time_ns())}',
-                        created=int(time_ns() / 1e9),
-                        model=model_name,
-                        model_type=model_type
-                    )
-
-            except json.JSONDecodeError:
-                pass  # Not JSON, fall through to standard response
-
-        # Standard text response
-        return super().from_generation_response(gen_resp, model_name, model_type)
-
-    @classmethod
-    def create_tool_result(
-        cls,
-        tool_call_id: str,
-        tool_name: str,
-        result: Any,
-        model_name: Optional[str] = None,
-        model_type: Optional[str] = None
-    ) -> 'tool_call_response':
-        '''Create a response representing tool execution results'''
-        choices = [{
-            'index': 0,
-            'message': {
-                'role': 'tool',
-                'tool_call_id': tool_call_id,
-                'name': tool_name,
-                'content': str(result)
-            },
-            'finish_reason': 'tool_result'
-        }]
-
-        return cls(
-            response_type=llm_response_type.TOOL_RESULT,
-            choices=choices,
-            tool_results=[result],
-            object='chat.completion',
-            id=f'cmpl-{int(time_ns())}',
-            created=int(time_ns() / 1e9),
-            model=model_name,
-            model_type=model_type
-        )
 
     def update_from_streaming(self, text: str) -> Optional[Dict]:
         '''

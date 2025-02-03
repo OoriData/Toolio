@@ -13,7 +13,7 @@ from toolio.common import extract_content, DEFAULT_JSON_SCHEMA_CUTOUT  # Support
 from toolio.toolcall import mixin as toolcall_mixin, process_tools_for_sysmsg, TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS
 from toolio.schema_helper import Model
 # from toolio.prompt_helper import set_tool_response, set_continue_message, process_tools_for_sysmsg
-from toolio.response_helper import llm_response
+from toolio.response_helper import llm_response, llm_response_type
 
 
 class model_manager(toolcall_mixin):
@@ -84,27 +84,21 @@ class model_manager(toolcall_mixin):
         async for resp in self._do_completion(messages, schema, cache_prompt=cache_prompt, simple=simple, **kwargs):
             yield resp
 
-    async def iter_complete_with_tools(self, messages, tools=None, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
-                                    temperature=None, insert_schema=True, **kwargs):
+    async def complete_with_tools(self, messages, tools=None, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
+                                temperature=None, **kwargs):
         '''
-        Make a chat completion with tools, then continue to iterate completions as long as the LLM
-        is using at least one tool, or until max_trips are exhausted
+        Complete using specified tools. Makes multiple completion trips if needed for tool calling.
 
         Args:
-            messages (str) - Prompt in the form of list of messages to send ot the LLM for completion.
-                If you have a system prompt, and you are setting up to call tools, it will be updated with
-                the tool spec
-
-            tools (list) - tools specified for this request, presumably a subset of overall tool registry.
-                Each entry is either a tool name, in which the invocation schema is as registered, or a full
-                tool-calling format stanza, in which case, for this request, only the implementaton is used
-                from the initial registry
-
-            max_tokens (int, optional): Maximum number of tokens to generate
-
-            temperature (float, optional): Affects how likely the LLM is to select statistically less common tokens
-        Yields:
-            str: response chunks
+            messages (List[dict]): Chat messages including the prompt
+            tools (list): Tools specified for this request, presumably a subset of overall tool registry
+                Each entry is either:
+                * a tool name to use the registered implementation and schema
+                * a complete tool specification dict, using only registered implementation
+            max_trips (int): Maximum number of times to consult the LLM
+            tool_choice (str): Control over tool selection ('auto', 'none', etc)
+            temperature (float): Optional sampling temperature
+            **kwargs: Additional arguments passed to completion
         '''
         toolset = tools or self.toolset
         req_tools = self._resolve_tools(toolset)
@@ -120,53 +114,76 @@ class model_manager(toolcall_mixin):
         trips_remaining = max_trips
         while trips_remaining > 0:
             trips_remaining -= 1
-            resp = None
 
+            # No tools left means just do a regular completion
             if not req_tool_spec:
-                # No tools (presumably all removed in prior loops), so just do a regular completion
-                async for resp in self.iter_complete(messages, insert_schema=insert_schema, temperature=temperature, **kwargs):
-                    yield resp
-                assert resp is not None, 'No response from LLM'
-                break
+                # XXX: For now tool-calling will just return plain text. Eventualy we want to e.g. accumulate token counts for a fuller response onj
+                chunks = []
+                async for chunk in self.iter_complete(messages, temperature=temperature, simple=False, **kwargs):
+                    chunks.append(chunk.first_choice_text)
+                return ''.join(chunks)
 
             # Do a completion trip with tools
-            first_resp = None
-            async for resp in self._completion_trip(messages, req_tool_spec, **kwargs):
-                if not resp:
-                    break
-                if first_resp is None: first_resp = resp  # noqa E701
+            # Schema, including no-tool fallback, plus string spec of available tools
+            full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(
+                req_tool_spec, self._internal_tools, leadin=self.sysmsg_leadin
+            )
+            messages = self.reconstruct_messages(messages, sysmsg=sysmsg)
 
-                resp_msg = resp.choices[0].get('message')
-                # resp_msg can be None e.g. if generation finishes due to length
-                if resp_msg and 'tool_calls' in resp_msg:
-                    bypass_response = self._check_tool_handling_bypass(first_resp)
-                    if bypass_response:
-                        # LLM called an internal tool either as a bypass, or for finishing up; treat as direct response
-                        yield bypass_response
-                        return
+            response = await self._single_toolcalling_completion(messages, full_schema, cache_prompt=False, **kwargs)
 
-                    if trips_remaining <= 0:
-                        # No more available trips; don't bother calling tools
-                        # XXX: Probably pick from warning or debug
-                        self.logger.debug('Maximum LLM trips exhausted without a final answer')
-                        warnings.warn('Maximum LLM trips exhausted without a final answer')
-                        yield resp
-                        return
-
-                    called_names = await self._handle_tool_responses(messages, first_resp, req_tools, req_tool_spec)
-
-                    # XXX: Possibly move into _handle_tool_responses?
-                    if self._remove_used_tools:
-                        # Many FLOSS LLMs get confused if they see a tool definition still in the response back
-                        # And loop back with a new request for the same tool they just called. Remove it to avoid this.
-                        req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
-                        req_tool_spec = [s for f, s in req_tools.values()]
-                    break
-                else:
-                    yield resp
-
-            if not first_resp:
+            if not response:
                 break
+
+            # print(f'{response.tool_calls=}')
+            # XXX: What if generation finishes due to length
+            if response.response_type == llm_response_type.TOOL_CALL:
+                bypass_response = self._check_tool_handling_bypass(response)
+                if bypass_response:
+                    # LLM called an internal tool either as a bypass, or for finishing up
+                    return bypass_response
+
+                if trips_remaining <= 0:
+                    # No more available trips; don't bother calling tools
+                    msg = 'Maximum LLM trips exhausted without a final answer'
+                    self.logger.debug(msg)
+                    # warnings.warn(msg)
+                    return response
+
+                called_names = await self._handle_tool_responses(messages, response, req_tools)
+
+                # Remove used tools if configured to do so
+                if self._remove_used_tools:
+                    req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
+                    req_tool_spec = [s for f, s in req_tools.values()]
+            else:
+                # Got a direct response without tool calls
+                return response
+
+        # No more trips available
+        return response
+
+    async def _single_toolcalling_completion(self, messages, schema, cache_prompt=False, **kwargs):
+        '''Do a single completion trip with tool calling support'''
+        response = None
+        for resp in self.model.completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
+            # print(f'{resp=}\t{schema=}')
+            if resp is not None:
+                if response is None:
+                    response = llm_response.from_generation_response(
+                        resp,
+                        model_name=self.model_path,
+                        model_type=self.model_type,
+                        tool_schema=schema  # Pass schema for tool call handling
+                    )
+                else:
+                    response.update_from_gen_response(resp)
+
+        # Finalize tool calls if any
+        if response and hasattr(response, 'finalize_tool_call'):
+            response.finalize_tool_call()
+
+        return response
 
     async def complete(self, messages, json_schema=None, insert_schema=True, temperature=None, **kwargs):
         '''
@@ -185,39 +202,15 @@ class model_manager(toolcall_mixin):
 
         # return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message'].get('content')
 
-    async def complete_with_tools(self, messages, tools=None, json_schema=None, max_trips=3,
-                                    tool_choice=TOOL_CHOICE_AUTO, temperature=None, **kwargs):
-        '''
-        Complete using specified tools. Returns just the response text
-        If you want the full response object, use iter_complete_with_tools directly
-
-        Args:
-            prompt (str or list): Text prompt or list of chat messages
-            tools (list): List of tool names or specs to make available
-            **kwargs: Additional arguments passed to __call__
-        '''
-        resp = None
-        async for resp in self.iter_complete_with_tools(messages, tools=tools,
-            max_trips=max_trips, tool_choice=tool_choice, temperature=temperature, **kwargs):
-            break
-
-        if isinstance(resp, str):
-            return resp
-        elif resp is None:
-            raise RuntimeError('No response from LLM')
-        # else:
-        #     # Extract text from response object
-        #     return resp.first_choice_text if hasattr(resp, 'first_choice_text') else resp['choices'][0]['message'].get('content')
-
-    async def _completion_trip(self, messages, req_tool_spec, **kwargs):
-        # schema, tool_sysmsg = process_tool_sysmsg(req_tool_spec, self.logger, leadin=self.sysmsg_leadin)
-        # Schema, including no-tool fallback, plus string spec of available tools, for use in constructing sysmsg
-        full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(req_tool_spec, self._internal_tools)
-        messages = self.reconstruct_messages(messages, sysmsg=sysmsg)
-        # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
-        cache_prompt=False
-        async for resp in self._do_completion(messages, full_schema, cache_prompt=cache_prompt, simple=False, **kwargs):
-            yield resp
+    # async def _completion_trip(self, messages, req_tool_spec, **kwargs):
+    #     # schema, tool_sysmsg = process_tool_sysmsg(req_tool_spec, self.logger, leadin=self.sysmsg_leadin)
+    #     # Schema, including no-tool fallback, plus string spec of available tools, for use in constructing sysmsg
+    #     full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(req_tool_spec, self._internal_tools)
+    #     messages = self.reconstruct_messages(messages, sysmsg=sysmsg)
+    #     # Turn off prompt caching until we figure out https://github.com/OoriData/Toolio/issues/12
+    #     cache_prompt=False
+    #     async for resp in self._do_completion(messages, full_schema, cache_prompt=cache_prompt, simple=False, **kwargs):
+    #         yield resp
 
     async def _do_completion(self, messages, schema, cache_prompt=False, simple=True, **kwargs):
         '''
@@ -256,24 +249,11 @@ class local_model_runner(model_manager):
         # Or with tools:
         resp = await runner('What is 2 + 2?', tools=['calculator'])
     '''
-    async def __call__(self, prompt, tools=None, json_schema=None, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
-                       insert_schema=True, temperature=None, **kwargs):
+    async def __call__(self, prompt, tools=None, json_schema=None, max_trips=3,
+                       tool_choice=TOOL_CHOICE_AUTO, temperature=None, **kwargs):
         '''
         Convenience interface to complete a prompt, optionally using tools or schema constraints
         Returns just the response text
-        If you want the full response object, use iter_complete* methods directly
-
-        Args:
-            prompt (str or list): Text prompt or list of chat messages
-            tools (list, optional): List of tool names or specs to make available; mutually exclusive with json_schema
-            json_schema (dict, optional): JSON schema to constrain the response; mutually exclusive with tools
-                If given a a string, it will be decoded as JSON
-            max_trips (int): Maximum number of tool-calling round trips
-            tool_choice (str): How tools should be selected ('auto', 'none', etc)
-            insert_schema (bool): Whether or not to insert JSON schema into prompt (True by default)
-
-        Returns:
-            Response text if no tools used, otherwise the full response object
         '''
         if tools and json_schema:
             raise ValueError('Cannot specify both tools and a JSON schema')
@@ -282,13 +262,18 @@ class local_model_runner(model_manager):
         messages = prompt if isinstance(prompt, list) else [{'role': 'user', 'content': prompt}]
 
         if tools:
-            async for resp in self.iter_complete_with_tools(messages, tools=tools, max_trips=max_trips,
-                                                            tool_choice=tool_choice, insert_schema=insert_schema,
-                                                            temperature=temperature, **kwargs):
-                return resp
+            resp = await self.complete_with_tools(messages, tools=tools, max_trips=max_trips,
+                                                tool_choice=tool_choice, temperature=temperature, **kwargs)
         else:
-            async for resp in self.iter_complete(messages, json_schema=json_schema, temperature=temperature, **kwargs):
-                return resp
+            resp = await self.complete(messages, json_schema=json_schema, temperature=temperature, **kwargs)
+
+        if isinstance(resp, str):
+            return resp
+        elif resp is None:
+            raise RuntimeError('No response from LLM')
+        else:
+            # Extract text from response object
+            return resp.first_choice_text
 
     # max_tokens (int): Maximum tokens to generate per completion
     # temperature (float): Sampling temperature; Affects how likely the LLM is to select statistically less common tokens
