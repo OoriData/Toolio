@@ -109,24 +109,17 @@ class struct_mlx_chat_api(toolcall_mixin):
 
         return await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
 
-    async def complete_with_tools(self, messages, tools=None, max_trips=3, tool_choice='auto',
-                                temperature=None, **kwargs):
-        '''Convenience wrapper for iter_complete_with_tools that returns just the response text'''
-        async for resp in self.iter_complete_with_tools(
-            messages, tools=tools, max_trips=max_trips,
-            tool_choice=tool_choice, temperature=temperature, **kwargs
-        ):
-            break
+    async def complete_with_tools(self, messages, req='chat/completions', tools=None, tool_choice='auto', sysprompt=None,
+                       apikey=None, trip_timeout=90.0, max_tokens=1024, temperature=0.1, **kwargs):
+        '''
+        '''
+        req_data = {'messages': messages, 'tools': tools, 'tool_choice': tool_choice, 'temperature': temperature, **kwargs}
+        req = req.strip('/')
 
-        if isinstance(resp, str):
-            return resp
-        elif resp is None:
-            raise RuntimeError('No response from LLM')
-        else:
-            return resp.first_choice_text
+        return await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
 
     async def __call__(self, prompt, tools=None, json_schema=None, max_trips=3,
-                       tool_choice='auto', temperature=None, sysprompt=None, **kwargs):
+                       tool_choice='auto', temperature=0.1, sysprompt=None, **kwargs):
         '''
         Convenience interface to complete a prompt, optionally using tools or schema constraints
         Returns just the response text
