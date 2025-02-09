@@ -250,7 +250,7 @@ class local_model_runner(model_manager):
         resp = await runner('What is 2 + 2?', tools=['calculator'])
     '''
     async def __call__(self, prompt, tools=None, json_schema=None, max_trips=3,
-                       tool_choice=TOOL_CHOICE_AUTO, temperature=None, **kwargs):
+                       tool_choice=TOOL_CHOICE_AUTO, temperature=None, sysprompt=None, **kwargs):
         '''
         Convenience interface to complete a prompt, optionally using tools or schema constraints
         Returns just the response text
@@ -260,6 +260,9 @@ class local_model_runner(model_manager):
 
         # Convert string prompt to chat messages if needed
         messages = prompt if isinstance(prompt, list) else [{'role': 'user', 'content': prompt}]
+        if sysprompt:
+            # Add system prompt if provided
+            messages.insert(0, {'role': 'system', 'content': sysprompt})
 
         if tools:
             resp = await self.complete_with_tools(messages, tools=tools, max_trips=max_trips,

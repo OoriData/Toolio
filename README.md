@@ -108,11 +108,17 @@ The key here is specification of a JSON schema. The schema is escaped for the co
 {"type": "object", "properties": {"guess": {"type": "number"}}}
 ```
 
-It looks a bit intimidating, at first, if you're not familiar with [JSON schema](https://json-schema.org/), but they're reasonably easy to learn. [You can follow the primer](https://json-schema.org/learn/getting-started-step-by-step).
+This describes a response such as:
 
-Ultimately, you can just paste an example of your desired output structure and ask ChatGPT, Claude, Gemini, etc. as simply as: "Please write a JSON schema to represent this data format."
+```json
+{"guess": 5}
+```
 
-Toolio's JSOn schema support is a subset, so you might need to tweak a schema before using it with Toolio. Most of the unsupported features can be just omitted, or expressed in the prompt or schema descriptions instead.
+The schema may look a bit intimidating, at first, if you're not familiar with [JSON schema](https://json-schema.org/), but they're reasonably easy to learn. [You can follow the primer](https://json-schema.org/learn/getting-started-step-by-step).
+
+Or you can just paste an example of your desired output structure and ask ChatGPT, Claude, Gemini, etc.—or of course our favorite local LLM via Toolio. "Please write a JSON schema to represent this data format: [response format example]"
+
+Toolio's JSON schema support is a subset, so you might need to tweak a schema before using it with Toolio. Most of the unsupported features can be just omitted, or expressed in the prompt or schema descriptions instead.
 
 ## Using the command line client instead
 

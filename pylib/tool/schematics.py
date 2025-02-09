@@ -58,6 +58,8 @@ def tool(name, desc=None, params=None):
             # Invoke-time setup code
             processed_kwargs = {}
             for (k, v) in kwargs.items():
+                if k not in params_lookup:
+                    continue
                 typ = params_lookup[k].typ
                 processed_kwargs[renames.get(k, k)] = typ(v)
             return processed_kwargs

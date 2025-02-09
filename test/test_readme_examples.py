@@ -6,7 +6,8 @@ import json
 
 import pytest
 
-from toolio.client import struct_mlx_chat_api, response_type, cmdline_tools_struct
+from toolio.client import struct_mlx_chat_api, cmdline_tools_struct
+from toolio.common import llm_response_type
 from toolio.tool import tool, param
 
 CHAT_COMPLETIONS_URL = '/v1/chat/completions'
@@ -22,7 +23,7 @@ async def test_number_guess(httpserver, session_cls):
     {"index":0,"message":{"role":"assistant","content":"*thinks for a moment* how about 6?"},"finish_reason":"stop"}
     ],"usage":{"completion_tokens":12,"prompt_tokens":24,"total_tokens":36},"object":"chat.completion",
     "id":"chatcmpl-5932132816_1719810548","created":1719810548,"model":"mlx-community/Hermes-2-Theta-Llama-3-8B-4bit"},
-        resp_type=response_type.MESSAGE)
+        resp_type=llm_response_type.MESSAGE)
 
     # Set up dummy server response
     # See also: https://pytest-httpserver.readthedocs.io/en/latest/api.html
@@ -42,7 +43,7 @@ async def test_naija_extract(httpserver, session_cls):
         req_schema={'type': 'array', 'items': {'type': 'object', 'properties': {'name': {'type': 'string'}, 'continent': {'type': 'string'}}, "required": ["name", "continent"]}},
         resp_text='[{"name": "Nigeria", "continent": "Africa"}]',
         resp_json={'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': '[{"name": "Nigeria", "continent": "Africa"}]'}, 'finish_reason': 'stop'}], 'usage': {'completion_tokens': 15, 'prompt_tokens': 74, 'total_tokens': 89}, 'object': 'chat.completion', 'id': 'chatcmpl-5936244368_1719844279', 'created': 1719844279, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'},
-        resp_type=response_type.MESSAGE)
+        resp_type=llm_response_type.MESSAGE)
 
     httpserver.expect_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(naija_extract_ht.resp_json)
 
@@ -60,7 +61,7 @@ async def test_boulder_weather_1(httpserver, session_cls):
         # req_tools={'tools': [{'type': 'function', 'function': {'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'City and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['℃', '℉']}}, 'required': ['location']}}}], 'tool_choice': 'auto'},
         req_tools=[{'type': 'function', 'function': {'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'City and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['℃', '℉']}}, 'required': ['location']}}}],
         resp_json={'choices': [{'index': 0, 'message': {'role': 'assistant', 'tool_calls': [{'id': 'call_6107388496_1719881067_0', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': '{"location": "Boulder, MA", "unit": "\\u2109"}'}}]}, 'finish_reason': 'tool_calls'}], 'usage': {'completion_tokens': 36, 'prompt_tokens': 185, 'total_tokens': 221}, 'object': 'chat.completion', 'id': 'chatcmpl-6107388496_1719881067', 'created': 1719881067, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'},
-        resp_type=response_type.TOOL_CALL)
+        resp_type=llm_response_type.TOOL_CALL)
 
     httpserver.expect_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(boulder_weather_trip1_ht.resp_json)
 
@@ -80,7 +81,7 @@ async def test_square_root(httpserver, session_cls):
        # Trip 1 retuns:
         intermed_resp_jsons=[{'choices': [{'index': 0, 'message': {'role': 'assistant', 'tool_calls': [{'id': 'call_17495866192_1719891003_0', 'type': 'function', 'function': {'name': 'square_root', 'arguments': '{"square": 256}'}}]}, 'finish_reason': 'tool_calls'}], 'usage': {'completion_tokens': 16, 'prompt_tokens': 157, 'total_tokens': 173}, 'object': 'chat.completion', 'id': 'chatcmpl-17495866192_1719891003', 'created': 1719891003, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'}],
          resp_text='The square root of 256 is 16.',
-        resp_type=response_type.MESSAGE)
+        resp_type=llm_response_type.MESSAGE)
 
     # Have to use expect_ordered_request so it will respond to a series of calls with the specified responses
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(square_root_ht.intermed_resp_jsons[0])
@@ -116,7 +117,7 @@ async def test_currency_convert(httpserver, session_cls):
         # Trip 1 retuns:
         intermed_resp_jsons=[{'choices': [{'index': 0, 'message': {'role': 'assistant', 'tool_calls': [{'id': 'call_17562895312_1721224234_0', 'type': 'function', 'function': {'name': 'currency_exchange', 'arguments': '{"from": "JPY", "to": "USD", "amount": "5000000"}', 'arguments_obj': {'from': 'JPY', 'to': 'USD', 'amount': '5000000'}}}]}, 'finish_reason': 'tool_calls'}], 'usage': {'completion_tokens': 31, 'prompt_tokens': 229, 'total_tokens': 260}, 'object': 'chat.completion', 'id': 'chatcmpl-17562895312_1721224234', 'created': 1721224234, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama', 'response_type': 2, 'prompt_tokens': 229, 'generated_tokens': 31}],
         resp_text='You need to withdraw $4050.00',
-        resp_type=response_type.MESSAGE)
+        resp_type=llm_response_type.MESSAGE)
 
     # Have to use expect_ordered_request so it will respond to a series of calls with the specified responses
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(currency_convert_ht.intermed_resp_jsons[0])
