@@ -47,6 +47,11 @@ docker rm tee-seeker-searxng
 time python demo/tee_seeker/main.py "What's so valuable about DeepSeek's GRPO technique?" --rigor 0.1
 ```
 
+# Future work
+
+<!-- Note: See what's already in the Arkestra version -->
+
+* Panel of experts approach from [Stanford Storm](https://github.com/stanford-oval/storm)
 
 # See also
 

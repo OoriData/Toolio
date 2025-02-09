@@ -68,33 +68,7 @@ Consider the following:
 Start by responding with a list of tasks, and only a list of tasks. You can work on additional steps, and the conclusion later.
 Keep it brief!
 '''
-
 # Keep your response short, because you'll have a chance to elaborate as we go along.
-
-
-
-# Schema for research planning response
-PLAN_SCHEMA = {
-    'type': 'object', 
-    'properties': {
-        'initial_thoughts': {'type': 'string'},
-        'research_steps': {
-            'type': 'array',
-            'items': {
-                'type': 'object',
-                'properties': {
-                    'step_type': {'type': 'string', 'enum': ['web_search', 'reasoning_step']},
-                    'query': {'type': 'string'},
-                    'reasoning': {'type': 'string'}
-                },
-                'required': ['step_type', 'reasoning']
-            }
-        },
-        'success_criteria': {'type': 'string'}
-    },
-    'required': ['initial_thoughts', 'research_steps', 'success_criteria']
-}
-
 
 # Simplified schema for research planning response
 PLAN_SCHEMA = {
@@ -152,7 +126,25 @@ ANALYSIS_SCHEMA = {
     'properties': {
         'key_findings': {
             'type': 'array',
-            'items': {'type': 'string'}
+            'items': {
+                'type': 'object',
+                'properties': {
+                    'finding': {'type': 'string'},
+                    'sources': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'object',
+                            'properties': {
+                                'title': {'type': 'string'},
+                                'url': {'type': 'string'},
+                                'relevance': {'type': 'string', 'enum': ['primary', 'supporting', 'related']}
+                            },
+                            'required': ['title', 'url', 'relevance']
+                        }
+                    }
+                },
+                'required': ['finding', 'sources']
+            }
         },
         'additional_questions': {
             'type': 'array', 
@@ -167,7 +159,7 @@ ANALYSIS_SCHEMA = {
 
 #Note: Not actually calling this via LLM tool-calling, but no harm declaring it that way
 @tool('searxng_search',
-      desc='Run a Web search query and get relevant results',
+      desc='Run Web search query and get relevant results',
       params=[param('query', str, 'search query text', True)])
 async def searxng_search(query):
     '''Execute a SearXNG search and return results'''
@@ -192,7 +184,11 @@ async def searxng_search(query):
                 processed.append({
                     'title': r['title'],
                     'url': r['url'],
-                    'content': content[:2000]  # Truncate for LLM context
+                    'snippet': r.get('snippet', ''),
+                    'published_date': r.get('publishedDate'),
+                    'content': content[:2000],  # Truncate for LLM context
+                    'engine': r.get('engine'),
+                    'timestamp': datetime.now().isoformat()
                 })
             except Exception as e:
                 logging.warning(f'Error fetching {r["url"]}: {e}')
@@ -205,6 +201,7 @@ class tee_seeker:
         self.llm = llm
         self.trace_file = trace_file
         self.trace = []
+        self.sources = {}
 
     async def research(self, query, rigor=0.5):
         '''
@@ -224,7 +221,7 @@ class tee_seeker:
         self._trace('plan', plan)
 
         completed_steps = 0
-        findings = []
+        findings_with_sources = []
 
         for step in plan['research_steps']:
             if completed_steps >= MAX_STEPS:
@@ -236,13 +233,34 @@ class tee_seeker:
                 results = await searxng_search(step['query'])
                 self._trace('search_results', results)
 
-                # Analyze results
-                analysis = await self.llm(f'Analyze these search results. Keep it succinct, with just 3-5 main takeaways:\n{json.dumps(results)}',
-                                        json_schema=ANALYSIS_SCHEMA, max_tokens=4096)
-                analysis = json.loads(analysis)
+                # Track sources
+                for r in results:
+                    self.sources[r['url']] = {
+                        'title': r['title'],
+                        'url': r['url'],
+                        'snippet': r.get('snippet', ''),
+                        'published_date': r.get('published_date'),
+                        'engine': r.get('engine'),
+                        'accessed': r.get('timestamp')
+                    }
+
+                # Analyze results, encouraging proper citation
+                analysis_prompt = f'''Analyze these search results. For each key finding:
+                1. State the finding clearly and concisely
+                2. Link it to specific sources that support it
+                3. Indicate how each source relates to the finding (primary evidence, supporting detail, or related context)
+
+                Search results: {json.dumps(results)}'''
+                # "Keep it succinct, with just 3-5 main takeaways"
+
+                analysis = await self.llm(analysis_prompt, json_schema=ANALYSIS_SCHEMA, max_tokens=8192)
+                try:
+                    analysis = json.loads(analysis)
+                except json.JSONDecodeError as e:
+                    raise
                 self._trace('analysis', analysis)
 
-                findings.extend(analysis['key_findings'])
+                findings_with_sources.extend(analysis['key_findings'])
 
                 # Possibly finish early if we have enough info
                 if (completed_steps >= MIN_STEPS and 
@@ -252,16 +270,26 @@ class tee_seeker:
 
             completed_steps += 1
 
-        # Final synthesis
-        # summary = await self.llm(f'Synthesize this research.  Keep it succinct, with just 3-5 main paragraphs or takeaways:\n{json.dumps(findings)}', max_tokens=8192)
-        summary = await self.llm(f'Synthesize this research in a report for me:\n{json.dumps(findings)}', max_tokens=8192)
+        # Synthesis. Preserve citations
+        synthesis_prompt = f'''Create a detailed research summary that:
+        1. Presents key findings with their supporting evidence
+        2. Cites specific sources for each major claim
+        3. Notes where multiple sources corroborate findings
+        4. Includes a "Sources Cited" section at the end
+
+        Research findings: {json.dumps(findings_with_sources)}'''
+
+        summary = await self.llm(synthesis_prompt, max_tokens=8192)
         print('-'*80)
-        self._trace('summary', summary)
+        self._trace('summary', {
+            'text': summary,
+            'sources': self.sources
+        })
 
         return summary
 
     def _trace(self, step_type, data):
-        '''Record a trace entry'''
+        '''Record a trace entry with source tracking'''
         entry = {
             'timestamp': datetime.now().isoformat(),
             'type': step_type,
@@ -269,9 +297,15 @@ class tee_seeker:
         }
         self.trace.append(entry)
 
+        # Include source index in trace file
+        trace_data = {
+            'steps': self.trace,
+            'sources': self.sources
+        }
+
         # Write updated trace
         with open(self.trace_file, 'w') as f:
-            json.dump(self.trace, f, indent=2)
+            json.dump(trace_data, f, indent=2)
 
 
 def main(query, model: str = MODEL_DEFAULT, rigor: float = 0.5, trace_file: str=DEFAULT_TRACE_FILE):
