@@ -114,7 +114,7 @@ class llm_response(tool_call_response_mixin):
         if response.get('choices'):
             choices = response['choices']
             rc1 = choices[0]
-            
+
             # Check for tool calls
             if rc1.get('message', {}).get('tool_calls'):
                 resp_type = llm_response_type.TOOL_CALL
@@ -208,6 +208,7 @@ class llm_response(tool_call_response_mixin):
         Args:
             gen_resp: GenerationResponse containing new content
         '''
+        self.latest_gen_resp = gen_resp  # Convenience for listeners
         if not gen_resp.text:
             return
 
@@ -274,6 +275,53 @@ class llm_response(tool_call_response_mixin):
             resp_dict[TOOLIO_MODEL_TYPE_FIELD] = self.model_type
 
         return resp_dict
+
+    def to_openai_chat_response(self) -> dict:
+        '''
+        Convert internal response to OpenAI chat completion API format
+        '''
+        resp = {
+            'id': self.id,
+            'object': self.object or 'chat.completion',
+            'created': self.created,
+            'model': self.model,
+            'choices': []
+        }
+
+        if self.usage:
+            resp['usage'] = self.usage
+
+        # Preserve model type info if available
+        if self.model_type:
+            resp[TOOLIO_MODEL_TYPE_FIELD] = self.model_type
+
+        # Convert choices to OpenAI format
+        for choice in self.choices:
+            openai_choice = {'index': choice.get('index', 0)}
+
+            # Handle different response types
+            if self.response_type == llm_response_type.TOOL_CALL:
+                # Tool calls need to be in a message wrapper
+                openai_choice['message'] = {
+                    'role': 'assistant',
+                    'content': None,
+                    'tool_calls': [tc.to_dict() for tc in self.tool_calls]
+                }
+            else:
+                # Regular message responses
+                message = choice.get('message', {})
+                if not message:
+                    # Create message from delta if needed
+                    message = {
+                        'role': 'assistant',
+                        'content': choice.get('delta', {}).get('content', self.first_choice_text)
+                    }
+                openai_choice['message'] = message
+
+            openai_choice['finish_reason'] = choice.get('finish_reason')
+            resp['choices'].append(openai_choice)
+
+        return resp
 
     def to_json(self) -> str:
         '''Convert to JSON string'''

@@ -84,14 +84,23 @@ class mixin(model_runner_base):
             * actual callable, annotated (i.e. using toolio.tool.tool decorator)
             * plain callable, with schema provided
             * None, with schema provided, in which case a tool is declared but lacking implementation
+            * OpenAI-style function specification dict
 
         schema - explicit schema, i.e. {'name': tname, 'description': tdesc,
-                  'parameters': {'type': 'object', 'properties': t_schema_params, 'required': t_required_list}}
-
+                'parameters': {'type': 'object', 'properties': t_schema_params, 'required': t_required_list}}
         '''
-        if funcpath_or_obj is None:
+        if isinstance(funcpath_or_obj, dict) and funcpath_or_obj.get('type') == 'function':
+            # Handle OpenAI-style function specification
+            func_spec = funcpath_or_obj['function']
+            funcobj = None  # No implementation provided
+            schema = {
+                'name': func_spec['name'],
+                'description': func_spec.get('description', ''),
+                'parameters': func_spec['parameters']
+            }
+        elif funcpath_or_obj is None:
             funcobj = funcpath_or_obj
-            warnings.warn(f'No implementation provided for function: {getattr(funcobj, 'name', 'UNNAMED')}')
+            warnings.warn(f'No implementation provided for function: {getattr(funcobj, "name", "UNNAMED")}')
         elif isinstance(funcpath_or_obj, str):
             funcpath = funcpath_or_obj
             if '|' in funcpath:
@@ -111,18 +120,16 @@ class mixin(model_runner_base):
 
         # Explicit schema overrides implicit
         if not schema:
-            # hasattr(funcpath_or_obj, 'schema')
             schema = getattr(funcobj, 'schema', None)
             if schema is None:
                 raise RuntimeError(f'No schema provided for tool function {funcobj}')
-            # assert schema['name'] = funcobj.name  # Do we care about this?
-        # print(f'{schema=}')
 
         self._tool_registry[schema['name']] = (funcobj, schema)
 
     @property
     def toolset(self):
-        return self._tool_registry.keys()
+        return {name: func for name, (func, _) in self._tool_registry.items()}
+        # return list(self._tool_registry.keys())
 
     def clear_tools(self):
         'Remove all tools from registry'

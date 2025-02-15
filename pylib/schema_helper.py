@@ -98,9 +98,9 @@ class Model:
     def completion(
         self,
         messages: Union[str, Iterable[dict[str, str]]],
-        schema: dict,
+        schema: dict | list | str | None,
         encapsulated: bool = False,
-        seed: int = None,
+        seed: int | None = None,
         cache_prompt: bool = False,
         **kwargs,  # From MLX_LM_GENERATE_KWARGS
     ):

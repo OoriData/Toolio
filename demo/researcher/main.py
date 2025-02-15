@@ -3,23 +3,35 @@
 # demo/demo/researcher/main
 '''
 Demo using Toolio for structured interaction between parts of a multi-agent research
-pipeline. The researcher combines LLM and web search to investigate a query.
+pipeline. The researcher combines LLM and web search to investigate a query while
+tracking and citing sources.
 
-1. Uses async/await throughout for efficient I/O
-2. Toolio-guaranteed structured JSON schemas for LLM outputs
-3. Chain-of-thought research planning upfront
-4. Comprehensive tracing system recording every step
-5. Configurable rigor level to control research depth
-6. SearXNG integration (with optional Toolio tool features)
-7. Clean separation of concerns between components
+Key Features:
+* Toolio-guaranteed structured JSON schemas for LLM outputs
+* Chain-of-thought research planning upfront
+* Comprehensive tracing system to maintain source citations
+* Configurable rigor level to control research depth
+* SearXNG integration with enhanced metadata capture
+* Clean separation of concerns between components
 
 Research process:
-
 1. Takes initial query and plans research steps using a structured schema
 2. Executes planned steps combining web search and analysis
-3. Can adaptively add steps based on findings
-4. Uses rigor parameter to control depth/thoroughness
-5. Maintains detailed trace of all operations
+3. Tracks and validates sources for each finding
+4. Can adaptively add steps based on findings
+5. Uses rigor parameter to control depth/thoroughness
+6. Maintains detailed trace including:
+   - All research operations
+   - Complete source metadata
+   - Citation relationships
+   - Source credibility assessment
+
+Emphasis on traceable and verifiable:
+- Links each finding to specific sources
+- Maintains a comprehensive source index
+- Records source metadata (publish date, access time, etc.)
+- Distinguishes primary vs supporting sources
+- Includes explicit citations in the final synthesis
 
 Usage:
 
@@ -49,11 +61,6 @@ MAX_STEPS = 10  # Maximum steps before forcing termination
 MIN_STEPS = 2  # Minimum steps before allowing early termination
 DEFAULT_TRACE_FILE = 'tee_seek_trace.json'
 
-# MODEL_DEFAULT = 'mlx-community/deepseek-r1-distill-qwen-1.5b-4bit'
-# MODEL_DEFAULT = 'mlx-community/deepseek-r1-distill-qwen-1.5b'  # Think this is the same as mlx-community/DeepSeek-R1-Distill-Qwen-1.5B-bf16
-# MODEL_DEFAULT = 'mlx-community/DeepSeek-R1-Distill-Qwen-14B-4bit'
-# MODEL_DEFAULT = 'mlx-community/DeepSeek-R1-Distill-Qwen-7B-8bit'
-# MODEL_DEFAULT = 'mlx-community/DeepSeek-R1-Distill-Llama-8B-8bit'
 MODEL_DEFAULT = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
 
 LAUNCH_PROMPT_TEMPLATE = '''\

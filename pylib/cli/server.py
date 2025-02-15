@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
     tstart = time.perf_counter_ns()
     # Can use click's env support if we decide we want this
     # model_path = os.environ['MODEL_PATH']
-    app.state.model_runner = local_model_runner(app_params['model'])
+    app.state.model_runner = local_model_runner(app_params['model'], server_mode=True)
     app.state.params = app_params
     tdone = time.perf_counter_ns()
     # XXX: alternate ID option is app.state.model.model.model_type which is a string, e.g. 'gemma2'
