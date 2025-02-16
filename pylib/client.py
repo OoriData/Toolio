@@ -109,31 +109,14 @@ class struct_mlx_chat_api(toolcall_mixin):
 
         return await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
 
-    async def complete_with_tools(self, messages, req='chat/completions', tools=None, tool_choice='auto', sysprompt=None,
+    async def complete_with_tools(self, messages, req='chat/completions', tools=None, tool_choice='auto', max_trips=3, sysprompt=None,
                        apikey=None, trip_timeout=90.0, max_tokens=1024, temperature=0.1, **kwargs):
         '''
         '''
-        req_data = {'messages': messages, 'tools': tools, 'tool_choice': tool_choice, 'temperature': temperature, **kwargs}
         req = req.strip('/')
-
-        return await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
-
-    async def __call__(self, prompt, tools=None, json_schema=None, max_trips=3,
-                       tool_choice='auto', temperature=0.1, sysprompt=None, **kwargs):
-        '''
-        Convenience interface to complete a prompt, optionally using tools or schema constraints
-        Returns just the response text
-        '''
-        if tools and json_schema:
-            raise ValueError('Cannot specify both tools and a JSON schema')
 
         if max_trips < 1:
             raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
-
-        # Convert string prompt to chat messages if needed
-        messages = prompt if isinstance(prompt, list) else [{'role': 'user', 'content': prompt}]
-        if sysprompt:
-            messages.insert(0, {'role': 'system', 'content': sysprompt})
 
         trips_remaining = max_trips
         resp = None
@@ -141,10 +124,13 @@ class struct_mlx_chat_api(toolcall_mixin):
             trips_remaining -= 1
 
             if tools:
-                resp = await self.complete_with_tools(messages, tools=tools,
-                                                    tool_choice=tool_choice, temperature=temperature, **kwargs)
+                req_data = {'messages': messages, 'tools': tools, 'tool_choice': tool_choice, 'temperature': temperature, **kwargs}
             else:
-                resp = await self.complete(messages, json_schema=json_schema, temperature=temperature, **kwargs)
+                req_data = {'messages': messages, 'max_tokens': max_tokens, 'temperature': temperature, **kwargs}
+
+            resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
+            if not tools:
+                break
 
             # Handle tool calls if present
             choices = resp.get('choices', [])
@@ -188,6 +174,31 @@ class struct_mlx_chat_api(toolcall_mixin):
 
             # No tool calls, return response
             return resp.get('choices', [{}])[0].get('message', {}).get('content', '')
+
+        return resp
+
+    async def __call__(self, prompt, tools=None, json_schema=None, max_trips=3,
+                       tool_choice='auto', temperature=0.1, sysprompt=None, **kwargs):
+        '''
+        Convenience interface to complete a prompt, optionally using tools or schema constraints
+        Returns just the response text
+        '''
+        if tools and json_schema:
+            raise ValueError('Cannot specify both tools and a JSON schema')
+
+        if max_trips < 1:
+            raise ValueError(f'At least one trip must be permitted, but {max_trips=}')
+
+        # Convert string prompt to chat messages if needed
+        messages = prompt if isinstance(prompt, list) else [{'role': 'user', 'content': prompt}]
+        if sysprompt:
+            messages.insert(0, {'role': 'system', 'content': sysprompt})
+
+        if tools:
+            resp = await self.complete_with_tools(messages, tools=tools,
+                                                tool_choice=tool_choice, temperature=temperature, **kwargs)
+        else:
+            resp = await self.complete(messages, json_schema=json_schema, temperature=temperature, **kwargs)
 
         return resp
 

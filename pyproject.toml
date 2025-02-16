@@ -181,3 +181,28 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
 ]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "session"
+addopts = "-v"
+# addopts = [
+#   "--cov=toolio",
+#   "--cov-report=term-missing",
+#   "--cov-report=xml",
+#   "--cov-report=html",
+#   "--cov-report=annotate",
+#   "--cov-branch",
+#   "--cov-fail-under=100",
+#   "--cov-context=test",
+#   "--cov-context=toolio",
+#   "--cov-context=pylib",
+#   "--cov-context=resource",
+#   "--cov-context=tests",
+#   "--cov-context=pytest",
+#   "--cov-context=pytest_httpserver",
+#   "--cov-context=pytest_mock",
+#   "--cov-context=pytest_asyncio",
+#   "--cov-context=pytest_httpx",
+#   "--cov-context=pytest_httpx_mock",
+#   "--cov-context=pytest_httpx_mock_async",
+#   "--cov-context=pytest_httpx_mock_sync"]

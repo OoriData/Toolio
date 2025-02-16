@@ -117,13 +117,13 @@ class llm_response(tool_call_response_mixin):
 
             # Check for tool calls
             if rc1.get('message', {}).get('tool_calls'):
+                assert rc1['message']['tool_calls'], 'If tool_calls is present, it must not be empty'
                 resp_type = llm_response_type.TOOL_CALL
                 # Process tool call arguments
                 # WTH does OpenAI have these arguments properties as plain text? Seems a massive layering violation
                 for tc in rc1['message']['tool_calls']:
                     tc['function']['arguments_obj'] = json.loads(tc['function']['arguments'])
             else:
-                # Extract response text
                 _first_choice_text = (
                     rc1.get('text') or 
                     rc1.get('message', {}).get('content', '')
