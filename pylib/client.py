@@ -11,14 +11,17 @@ Modeled on ogbujipt.llm_wrapper.openai_api & ogbujipt.llm_wrapper.openai_chat_ap
 import json
 import warnings
 import logging
-import inspect
+# import inspect
 
 import httpx
 from amara3 import iri
 
 from ogbujipt import config
 from toolio.common import DEFAULT_JSON_SCHEMA_CUTOUT
-from toolio.toolcall import mixin as toolcall_mixin, process_tools_for_sysmsg, TOOL_CHOICE_NONE, TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS, TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME, CM_TOOLS_LEFT, CM_NO_TOOLS_LEFT
+from toolio.toolcall import (
+    mixin as toolcall_mixin, process_tools_for_sysmsg, handle_pyfunc,
+    TOOL_CHOICE_NONE, TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS,
+    TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME, CM_TOOLS_LEFT, CM_NO_TOOLS_LEFT)
 from toolio.response_helper import llm_response
 from toolio.common import llm_response_type
 
@@ -76,7 +79,7 @@ class struct_mlx_chat_api(toolcall_mixin):
         # if apikey:
         #     header['Authorization'] = f'Bearer {apikey}'
         req_data['stream'] = False
-
+        # import pprint; pprint.pprint(req_data)
         async with httpx.AsyncClient() as client:
             result = await client.post(
                 f'{self.base_url}/{req.strip("/")}', json=req_data, headers=header, timeout=timeout)
@@ -87,7 +90,7 @@ class struct_mlx_chat_api(toolcall_mixin):
             else:
                 raise RuntimeError(f'Unexpected response from {self.base_url}/{req}:\n{repr(result)}')
 
-    async def complete(self, messages, req='chat/completions', json_schema=None, sysprompt=None,
+    async def complete(self, messages, full_response=False, req='chat/completions', json_schema=None, sysprompt=None,
                        apikey=None, trip_timeout=90.0, max_tokens=1024, temperature=0.1, **kwargs):
         '''
         '''
@@ -107,9 +110,10 @@ class struct_mlx_chat_api(toolcall_mixin):
 
         req = req.strip('/')
 
-        return await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
+        resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
+        return resp if full_response else llm_response.from_openai_chat(resp).first_choice_text
 
-    async def complete_with_tools(self, messages, req='chat/completions', tools=None, tool_choice='auto', max_trips=3, sysprompt=None,
+    async def complete_with_tools(self, messages, full_response=False, req='chat/completions', tools=None, tool_choice='auto', max_trips=3, sysprompt=None,
                        apikey=None, trip_timeout=90.0, max_tokens=1024, temperature=0.1, **kwargs):
         '''
         '''
@@ -123,61 +127,35 @@ class struct_mlx_chat_api(toolcall_mixin):
         while trips_remaining > 0:
             trips_remaining -= 1
 
+            # Convert local tool format e.g. {'toolname': (tool_func_obj, schema)} to OpenAI format
+            # schema is a dict with description, name, and parameters
+            req_tools = [{'type': 'function', 'function': t[1]} for t in self._resolve_tools(tools).values()]
             if tools:
-                req_data = {'messages': messages, 'tools': tools, 'tool_choice': tool_choice, 'temperature': temperature, **kwargs}
+                req_data = {'messages': messages, 'tools': req_tools, 'tool_choice': tool_choice, 'temperature': temperature, **kwargs}
             else:
                 req_data = {'messages': messages, 'max_tokens': max_tokens, 'temperature': temperature, **kwargs}
 
             resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
-            if not tools:
+
+            choices = resp.get('choices', [])
+
+            if tools and choices and 'message' in choices[0]:
+                if trips_remaining <= 0:
+                    self.logger.warning('Max trips reached with pending tool calls')
+                    return resp
+
+                resp = llm_response.from_openai_chat(resp)
+                results = await self._execute_tool_calls(resp.tool_calls, tools)
+                await self._handle_tool_results(messages, results, tools, self._remove_used_tools)
+            else:
                 break
 
-            # Handle tool calls if present
-            choices = resp.get('choices', [])
-            if choices and 'message' in choices[0]:
-                message = choices[0]['message']
-                if message.get('tool_calls'):
-                    if trips_remaining <= 0:
-                        self.logger.warning('Max trips reached with pending tool calls')
-                        return resp
-
-                    # Execute tool calls and add results to messages
-                    for tc in message['tool_calls']:
-                        tool_name = tc['function']['name']
-                        if tool_name in [TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME]:
-                            # Internal tool bypass - extract direct response
-                            args = json.loads(tc['function']['arguments'])
-                            return args['response']
-
-                        # Execute tool and add result to messages
-                        tool_impl = self.toolset.get(tool_name)
-                        if tool_impl is None:
-                            self.logger.warning(f'No implementation found for tool: {tool_name}')
-                            continue
-
-                        if tool_impl:
-                            args = json.loads(tc['function']['arguments'])
-                            result = await tool_impl(**args) if inspect.iscoroutinefunction(tool_impl) else tool_impl(**args)
-                            messages.append({
-                                'role': 'tool',
-                                'tool_call_id': tc['id'],
-                                'name': tool_name,
-                                'content': str(result)
-                            })
-
-                    # Add continue message
-                    messages.append({
-                        'role': 'user',
-                        'content': CM_TOOLS_LEFT if trips_remaining > 0 else CM_NO_TOOLS_LEFT
-                    })
-                    continue
-
             # No tool calls, return response
-            return resp.get('choices', [{}])[0].get('message', {}).get('content', '')
+            # return resp.get('choices', [{}])[0].get('message', {}).get('content', '')
 
-        return resp
+        return resp if full_response else llm_response.from_openai_chat(resp).first_choice_text
 
-    async def __call__(self, prompt, tools=None, json_schema=None, max_trips=3,
+    async def __call__(self, prompt, full_response=False, tools=None, json_schema=None, max_trips=3,
                        tool_choice='auto', temperature=0.1, sysprompt=None, **kwargs):
         '''
         Convenience interface to complete a prompt, optionally using tools or schema constraints
@@ -195,10 +173,11 @@ class struct_mlx_chat_api(toolcall_mixin):
             messages.insert(0, {'role': 'system', 'content': sysprompt})
 
         if tools:
-            resp = await self.complete_with_tools(messages, tools=tools,
+            resp = await self.complete_with_tools(messages, full_response=full_response, tools=tools,
                                                 tool_choice=tool_choice, temperature=temperature, **kwargs)
         else:
-            resp = await self.complete(messages, json_schema=json_schema, temperature=temperature, **kwargs)
+            resp = await self.complete(messages, full_response=full_response, json_schema=json_schema,
+                                                temperature=temperature, **kwargs)
 
         return resp
 
@@ -229,5 +208,8 @@ def cmdline_tools_struct(tools_obj):
                 if 'pyfunc' in tf:
                     del tf['pyfunc']
         else:
+            # tool_func = handle_pyfunc(t)
+            # print(tool_func.schema)
+            # new_tools_list.append(tool_func.schema)
             new_tools_list.append(t)
     return new_tools_list

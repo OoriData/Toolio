@@ -32,9 +32,7 @@ async def test_number_guess(httpserver, session_cls):
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
     resp = await llm.complete(number_guess_ht.req_messages)
-    # resp = llm_response.from_openai_chat(resp)
-    assert resp.response_type == number_guess_ht.resp_type
-    assert resp.first_choice_text == number_guess_ht.resp_text
+    assert resp == number_guess_ht.resp_text
 
 @pytest.mark.asyncio
 async def test_naija_extract(httpserver, session_cls):
@@ -50,8 +48,8 @@ async def test_naija_extract(httpserver, session_cls):
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
     resp = await llm.complete(naija_extract_ht.req_messages)
-    assert resp.response_type == naija_extract_ht.resp_type
-    assert json.loads(resp.first_choice_text.encode('utf-8')) == json.loads(naija_extract_ht.resp_text.encode('utf-8'))
+    # assert json.loads(resp.first_choice_text.encode('utf-8')) == json.loads(naija_extract_ht.resp_text.encode('utf-8'))
+    assert json.loads(resp) == json.loads(naija_extract_ht.resp_text)
 
 @pytest.mark.asyncio
 async def test_boulder_weather_1(httpserver, session_cls):
@@ -65,9 +63,22 @@ async def test_boulder_weather_1(httpserver, session_cls):
 
     httpserver.expect_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(boulder_weather_trip1_ht.resp_json)
 
-    llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
-    resp = await llm.complete(boulder_weather_trip1_ht.req_messages)
+    tools_list = cmdline_tools_struct(boulder_weather_trip1_ht.req_tools)
+    llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'), tool_reg=tools_list)
+    resp = await llm.complete_with_tools(boulder_weather_trip1_ht.req_messages, tools=llm.toolset)
+
+    # Check if the response is None
+    if resp is None:
+        pytest.fail("llm.complete_with_tools returned None. Check server configuration or test setup.")
+
+    resp = llm_response.from_openai_chat(resp)
     assert resp.response_type == boulder_weather_trip1_ht.resp_type
+
+    if not resp.tool_calls:
+        pytest.fail("Expected tool calls, but none were found in the response.")
+
+    assert httpserver.oneshot_query.method == 'POST'
+    assert httpserver.oneshot_query.url == CHAT_COMPLETIONS_URL
 
 @pytest.mark.asyncio
 async def test_square_root(httpserver, session_cls):

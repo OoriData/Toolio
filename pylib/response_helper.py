@@ -34,7 +34,7 @@ from enum import Enum, auto
 from ogbujipt.llm_wrapper import response_type
 
 from toolio.common import llm_response_type, TOOLIO_MODEL_TYPE_FIELD
-from toolio.toolcall import tool_call_response_mixin, parse_genresp_tool_calls  # t, ool_call
+from toolio.toolcall import tool_call_response_mixin, parse_genresp_tool_calls  # tool_call
 
 class response_state(Enum):
     '''States for tracking response generation'''
@@ -229,6 +229,7 @@ class llm_response(tool_call_response_mixin):
                 choice0['finish_reason'] = 'tool_calls'
                 self.tool_calls = tool_calls
                 self.state = response_state.COMPLETE
+                self.accumulated_text = ''  # Reset for next
                 return
 
         elif self.state == response_state.GATHERING_MESSAGE:

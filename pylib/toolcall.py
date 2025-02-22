@@ -92,7 +92,7 @@ class mixin(model_runner_base):
         if isinstance(funcpath_or_obj, dict) and funcpath_or_obj.get('type') == 'function':
             # Handle OpenAI-style function specification
             func_spec = funcpath_or_obj['function']
-            funcobj = None  # No implementation provided
+            funcobj = handle_pyfunc(func_spec['pyfunc']) if 'pyfunc' in func_spec else None
             schema = {
                 'name': func_spec['name'],
                 'description': func_spec.get('description', ''),
@@ -102,19 +102,7 @@ class mixin(model_runner_base):
             funcobj = funcpath_or_obj
             warnings.warn(f'No implementation provided for function: {getattr(funcobj, "name", "UNNAMED")}')
         elif isinstance(funcpath_or_obj, str):
-            funcpath = funcpath_or_obj
-            if '|' in funcpath:
-                # pyfunc is in the form 'path.to.module_to_import|path.to.function'
-                modpath, funcpath = funcpath.split('|')
-            else:
-                modpath, funcpath = funcpath.rsplit('.', 1)
-            modobj = importlib.import_module(modpath)
-            parent = modobj
-            for funcname in funcpath.split('.'):
-                parent = getattr(parent, funcname)
-            func = parent
-            assert callable(func)
-            funcobj = func
+            funcobj = handle_pyfunc(funcpath_or_obj)
         else:
             funcobj = funcpath_or_obj
 
@@ -164,33 +152,52 @@ class mixin(model_runner_base):
         '''
         for tc in response.tool_calls:
             if tc.name in (TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME):
-                args = json.loads(tc.arguments)
+                # args = json.loads(tc.arguments)
+                args = tc.arguments
                 direct_resp_text = args['response']
                 self.logger.debug(f'LLM chose to bypass function-calling witht he following response: {direct_resp_text}')
                 # Reconstruct an OpenAI-style response
-                choice = response['choices'][0]
+                # choice = response['choices'][0]
+                choice = response.choices[0]
                 full_resp = {
                     'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': direct_resp_text},
                                  'finish_reason': choice['finish_reason']}],
                                  # Usage is going to be based on the tool-call original, but we probably want that,
                                  # because it was what's actually consumed
-                                 'usage': response['usage'], 'object': response['object'], 'id': response['id'],
-                                 'created': response['created'], 'model': response['model'], 'toolio.model_type':
-                                 response['toolio.model_type']}
+                                 'usage': response.usage, 'object': response.object, 'id': response.id,
+                                 'created': response.created, 'model': response.model, 'toolio.model_type':
+                                 response.model_type}
                 return full_resp
         return None
 
-    async def _execute_tool_calls(self, response, req_tools):
-        # print('update_tool_calls', response)
-        tool_responses = []
-        for tc in response.tool_calls:
+# In case we want to use introspection to specify how we call functions
+# import inspect
+
+# def example_function(a, b, c=3, *args, d=4, **kwargs):
+#     pass
+
+# positional_count = 0
+# keyword_count = 0
+
+# sig = inspect.signature(example_function)
+# for param in sig.parameters.values():
+#     if param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):
+#         positional_count += 1
+#     if param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY):
+#         keyword_count += 1
+
+# print(f"Positional arguments: {positional_count}")
+# print(f"Keyword arguments: {keyword_count}")
+
+    async def _execute_tool_calls(self, tool_calls, req_tools):
+        tool_results = []
+        for tc in tool_calls:
             call_id = tc.id
             tool, _ = req_tools.get(tc.name, (None, None))
             if tool is None:
                 warnings.warn(f'Tool called, but it has no function implementation: {tc.name}')
                 continue
-            if self.logger:
-                self.logger.debug(f'🔧 Calling tool {tc.name} with args {tc.arguments}')
+            self.logger.debug(f'🔧 Calling tool {tc.name} with args {tc.arguments}')
             # FIXME: Parallelize async calls rather than blocking on each
             is_callable, is_async_callable = check_callable(tool)
             try:
@@ -207,17 +214,13 @@ class mixin(model_runner_base):
                         result = tool(next(iter(tc.arguments.values())))
                 else:
                     raise
-            if self.logger:
-                self.logger.debug(f'✅ Tool call result: {result}')
+            self.logger.debug(f'✅ Tool call result: {result}')
+            tool_results.append((call_id, tc.name, tc.arguments, result))
+        return tool_results
 
-            tool_responses.append((call_id, tc.name, tc.arguments, result))
-            # print('Tool result:', result)
-            # self._pending_tool_calls[tc.id] = (tool, tc.arguments)
-        return tool_responses
-
-    async def _handle_tool_responses(self, messages, response, req_tools, req_tool_spec=None):
+    async def _handle_tool_results(self, messages, results, req_tools, req_tool_spec=None, remove_used_tools=True):
         '''
-        Handle tool responses and update messages accordingly
+        Handle tool results and update messages accordingly
         
         Args:
             messages: Current message history
@@ -225,17 +228,20 @@ class mixin(model_runner_base):
             req_tools: Dictionary of available tools
             req_tool_spec: Optional tool specifications (needed for continue message)
         '''
-        tool_responses = await self._execute_tool_calls(response, req_tools)
-
-        for call_id, callee_name, callee_args, result in tool_responses:
+        called_names = []
+        for call_id, callee_name, callee_args, result in results:
             # print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
             set_tool_response(messages, call_id, callee_name, callee_args, str(result), 
                             model_flags=self.model_flags)
+            called_names.append(callee_name)
 
         continue_msg = CM_TOOLS_LEFT if req_tool_spec else CM_NO_TOOLS_LEFT
         set_continue_message(messages, continue_msg, model_flags=self.model_flags)
 
-        return [callee_name for call_id, callee_name, callee_args, result in tool_responses]
+        if remove_used_tools:
+            req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
+            req_tool_spec = [s for f, s in req_tools.values()]
+        return called_names
 
 
 def prep_tool(spec):
@@ -440,6 +446,11 @@ class tool_call_response_mixin:
         '''
         Called when a tool call sequence is complete to construct the final tool calls structure
         '''
+        # if hasattr(self, 'accumulated_text'):
+        #     assert not getattr(self, '_accumulated_args', None)
+        #     self._first_choice_text = self.accumulated_text
+        #     return
+
         if not hasattr(self, '_accumulated_args'):
             return
 
@@ -559,3 +570,18 @@ class tool_call_response_mixin:
     def first_tool_result(self) -> Optional[Any]:
         '''Get the first tool result if any'''
         return self.tool_results[0] if self.tool_results else None
+
+
+def handle_pyfunc(pyfunc):
+    if '|' in pyfunc:
+        # pyfunc is in the form 'path.to.module_to_import|path.to.function'
+        modpath, funcpath = pyfunc.split('|')
+    else:
+        modpath, funcpath = pyfunc.rsplit('.', 1)
+    modobj = importlib.import_module(modpath)
+    parent = modobj
+    for funcname in funcpath.split('.'):
+        parent = getattr(parent, funcname)
+    func = parent
+    assert callable(func)
+    return func

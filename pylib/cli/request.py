@@ -90,7 +90,7 @@ def main(apibase, prompt, prompt_file, schema, schema_file, tools, tools_file, t
                                     max_tokens=max_tokens,
                                     temperature=temp,
                                     json_schema=schema_obj,
-                                    tools=tools_list,
+                                    tools=list(llm._tool_registry.keys()),
                                     tool_choice=tool_choice,
                                     max_trips=max_trips,
                                     trip_timeout=trip_timeout))

@@ -126,7 +126,7 @@ class model_manager(toolcall_mixin):
         if self.server_mode:
             # In server mode, don't try to resolve or execute tools
             toolset = tools  # Just pass through tool specifications
-            req_tool_spec = tools
+            req_tool_spec, req_tools = tools, None
         else:
             # Normal client-side operation
             toolset = tools or self.toolset
@@ -164,6 +164,7 @@ class model_manager(toolcall_mixin):
             )
             messages = self.reconstruct_messages(messages, sysmsg=sysmsg)
 
+            # print('Calling LLM with tool schema:', full_schema)
             response = await self._single_toolcalling_completion(messages, full_schema, cache_prompt=False, **kwargs)
 
             if not response:
@@ -175,6 +176,7 @@ class model_manager(toolcall_mixin):
                     # In server mode, just return the tool calls without executing
                     return response if full_response else str(response)
 
+                # print('LLM response:', response)
                 bypass_response = self._check_tool_handling_bypass(response)
                 if bypass_response:
                     # LLM called an internal tool either as a bypass, or for finishing up
@@ -187,12 +189,12 @@ class model_manager(toolcall_mixin):
                     self.logger.debug(msg)
                     return response if full_response else str(response)
 
-                called_names = await self._handle_tool_responses(messages, response, req_tools)
-
-                if self._remove_used_tools:
-                    req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
-                    req_tool_spec = [s for f, s in req_tools.values()]
-            else:  # Direct response without tool calls
+                results = await self._execute_tool_calls(response.tool_calls, req_tools)
+                await self._handle_tool_results(messages, results, req_tools, self._remove_used_tools)
+            elif response.response_type == llm_response_type.MESSAGE:  # Direct response without tool calls
+                return response if full_response else response.accumulated_text
+            else:
+                self.logger.warning(f'Unexpected response type: {response.response_type}. {response=}')
                 return response if full_response else response.first_choice_text
 
         return response if full_response else str(response)
@@ -200,7 +202,7 @@ class model_manager(toolcall_mixin):
     async def _single_toolcalling_completion(self, messages, schema, cache_prompt=False, **kwargs):
         '''Do a single completion trip with tool calling support'''
         response = None
-        for gr in self.model.completion(messages, None, cache_prompt=cache_prompt, **kwargs):
+        for gr in self.model.completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
             if response is None:
                 response = llm_response.from_generation_response(gr, tool_schema=schema,
                                                                  model_name=self.model_path, model_type=self.model_type)

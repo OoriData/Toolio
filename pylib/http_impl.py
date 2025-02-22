@@ -8,6 +8,10 @@ Heart of the implementation for HTTP server request handling
 import json
 import warnings
 
+import jinja2
+from fastapi import status
+from fastapi.responses import JSONResponse
+
 from mlx_lm.sample_utils import make_sampler
 
 from toolio.vendor.llm_structured_output.util.output import info, debug
@@ -54,23 +58,29 @@ async def post_v1_chat_completions_impl(state, req_data: V1ChatCompletionsReques
         else:
             schema = {'type': 'object'}
 
-    if tools:
-        debug('Tool-calling completion. Starting generation…')
-        # Pass tools through without resolving implementations
-        response = await state.model_runner.complete_with_tools(
-            messages,
-            full_response=True,
-            tools=tools,
-            tool_choice=tool_choice,
-            **kwargs
-        )
-    else:
-        debug('Using schema:', str(schema)[:200] if schema else 'No JSON schema provided. Starting generation…')
-        response = await state.model_runner.complete(
-            messages,
-            full_response=True,
-            json_schema=schema,
-            **kwargs
+    try:
+        if tools:
+            debug('Tool-calling completion. Starting generation…')
+            # Pass tools through without resolving implementations
+            response = await state.model_runner.complete_with_tools(
+                messages,
+                full_response=True,
+                tools=tools,
+                tool_choice=tool_choice,
+                **kwargs
+            )
+        else:
+            debug('Using schema:', str(schema)[:200] if schema else 'No JSON schema provided. Starting generation…')
+            response = await state.model_runner.complete(
+                messages,
+                full_response=True,
+                json_schema=schema,
+                **kwargs
+            )
+    except jinja2.exceptions.TemplateError as e:
+        # Raise a 400 error for invalid input prompt
+        return JSONResponse(
+            content='Invalid prompting' + str(e), status_code=status.HTTP_400_BAD_REQUEST
         )
 
     return response.to_openai_chat_response()
