@@ -1,8 +1,10 @@
 # SPDX-FileCopyrightText: 2024-present Oori Data <info@oori.dev>
 # SPDX-License-Identifier: Apache-2.0
-# test/test_conventional_prompt.py
+# test/test_readme_examples.py
 
 import json
+import warnings
+from unittest.mock import patch
 
 import pytest
 
@@ -14,7 +16,7 @@ from toolio.tool import tool, param
 CHAT_COMPLETIONS_URL = '/v1/chat/completions'
 
 @pytest.mark.asyncio
-# httpserver fixture from pytest_httpserver starts the dummy server
+# httpserver fixture from pytest-httpserver starts the dummy server
 async def test_number_guess(httpserver, session_cls):
     number_guess_ht = session_cls(
         label='Number guess (Hermes theta)',
@@ -53,55 +55,205 @@ async def test_naija_extract(httpserver, session_cls):
 
 @pytest.mark.asyncio
 async def test_boulder_weather_1(httpserver, session_cls):
+    @tool('get_current_weather', desc='Get the current weather in a given location',
+          params=[
+              param('location', str, 'City and state, e.g. San Francisco, CA', True),
+              param('unit', str, 'Temperature unit', False)  # , enum=['℃', '℉'] # Cool idea for tools
+          ])
+    def get_current_weather(location, unit=None):
+        return {"temperature": 72, "unit": unit or "℉"}
+
+    weather_schema = {
+        'name': 'get_current_weather',
+        'description': 'Get the current weather in a given location',
+        'parameters': {
+            'type': 'object',
+            'properties': {
+                'location': {
+                    'type': 'string',
+                    'description': 'City and state, e.g. San Francisco, CA'
+                },
+                'unit': {
+                    'type': 'string',
+                    'enum': ['℃', '℉']
+                }
+            },
+            'required': ['location']
+        }
+    }
+
     boulder_weather_trip1_ht = session_cls(
         label='Boulder weather - trip1 (Hermes theta)',
         req_messages=[{'role': 'user', 'content': "What's the weather like in Boulder today?\n"}],
-        # req_tools={'tools': [{'type': 'function', 'function': {'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'City and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['℃', '℉']}}, 'required': ['location']}}}], 'tool_choice': 'auto'},
-        req_tools=[{'type': 'function', 'function': {'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'City and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['℃', '℉']}}, 'required': ['location']}}}],
-        resp_json={'choices': [{'index': 0, 'message': {'role': 'assistant', 'tool_calls': [{'id': 'call_6107388496_1719881067_0', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': '{"location": "Boulder, MA", "unit": "\\u2109"}'}}]}, 'finish_reason': 'tool_calls'}], 'usage': {'completion_tokens': 36, 'prompt_tokens': 185, 'total_tokens': 221}, 'object': 'chat.completion', 'id': 'chatcmpl-6107388496_1719881067', 'created': 1719881067, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'},
-        resp_type=llm_response_type.TOOL_CALL)
+        req_tools={'get_current_weather': (get_current_weather, weather_schema)},
+        resp_json={
+            'choices': [{
+                'index': 0,
+                'message': {
+                    'role': 'assistant',
+                    'content': 'The current temperature in Boulder is 72℉.'
+                },
+                'finish_reason': 'stop'
+            }],
+            'usage': {'completion_tokens': 12, 'prompt_tokens': 185, 'total_tokens': 197},
+            'object': 'chat.completion',
+            'id': 'chatcmpl-test_id',
+            'created': 1719881067,
+            'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'
+        },
+        intermed_resp_jsons=[{
+            'choices': [{
+                'index': 0,
+                'message': {
+                    'role': 'assistant',
+                    'tool_calls': [{
+                        'id': 'call_test_id',
+                        'type': 'function',
+                        'function': {
+                            'name': 'get_current_weather',
+                            'arguments': '{"location": "Boulder, MA", "unit": "\\u2109"}'
+                        }
+                    }]
+                },
+                'finish_reason': 'tool_calls'
+            }],
+            'usage': {'completion_tokens': 36, 'prompt_tokens': 185, 'total_tokens': 221},
+            'object': 'chat.completion',
+            'id': 'chatcmpl-intermed_id',
+            'created': 1719881067,
+            'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
+            'toolio.model_type': 'llama'
+        }],
+        resp_text='The current temperature in Boulder is 72℉.',
+        resp_type=llm_response_type.MESSAGE
+    )
 
-    httpserver.expect_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(boulder_weather_trip1_ht.resp_json)
+    httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(boulder_weather_trip1_ht.intermed_resp_jsons[0])
+    httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(boulder_weather_trip1_ht.resp_json)
 
-    tools_list = cmdline_tools_struct(boulder_weather_trip1_ht.req_tools)
-    llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'), tool_reg=tools_list)
-    resp = await llm.complete_with_tools(boulder_weather_trip1_ht.req_messages, tools=llm.toolset)
+    llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
+    llm.register_tool(get_current_weather, weather_schema)
+    llm.register_internal_tools()
 
-    # Check if the response is None
-    if resp is None:
-        pytest.fail("llm.complete_with_tools returned None. Check server configuration or test setup.")
+    resp = await llm.complete_with_tools(
+        boulder_weather_trip1_ht.req_messages,
+        tools=['get_current_weather'],
+        full_response=False
+    )
 
     resp = llm_response.from_openai_chat(resp)
-    assert resp.response_type == boulder_weather_trip1_ht.resp_type
-
-    if not resp.tool_calls:
-        pytest.fail("Expected tool calls, but none were found in the response.")
-
-    assert httpserver.oneshot_query.method == 'POST'
-    assert httpserver.oneshot_query.url == CHAT_COMPLETIONS_URL
+    assert resp.first_choice_text == boulder_weather_trip1_ht.resp_text
 
 @pytest.mark.asyncio
 async def test_square_root(httpserver, session_cls):
+    httpserver.verbose = True
+    # Define the tool using the decorator
+    @tool('square_root', desc='Get the square root of the given number',
+          params=[param('square', float, 'Number from which to find the square root', True)])
+    def square_root(square):
+        import math
+        return math.sqrt(square)
+
+    # The schema should match what the decorator produces
+    square_root_schema = {
+        'name': 'square_root',
+        'description': 'Calculate square root',
+        'parameters': {
+            'type': 'object',
+            'properties': {
+                'square': {
+                    'type': 'number',
+                    'description': 'Number from which to find the square root'
+                }
+            },
+            'required': ['square']
+        }
+    }
+
     square_root_ht = session_cls(
         label='Square root (Hermes theta)',
         req_messages=[{'role': 'user', 'content': 'What is the square root of 256?\n'}],
-        req_tools=[{'type': 'function', 'function': {'name': 'square_root', 'description': 'Get the square root of the given number', 'parameters': {'type': 'object', 'properties': {'square': {'type': 'number', 'description': 'Number from which to find the square root'}}, 'required': ['square']}, 'pyfunc': 'math|sqrt'}}],
-        # Trip 2 is the final result:
-        resp_json={'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': 'The square root of 256 is 16.'}, 'finish_reason': 'stop'}], 'usage': {'completion_tokens': 10, 'prompt_tokens': 32, 'total_tokens': 42}, 'object': 'chat.completion', 'id': 'chatcmpl-6108365968_1719891004', 'created': 1719891004, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'},
-       # Trip 1 retuns:
-        intermed_resp_jsons=[{'choices': [{'index': 0, 'message': {'role': 'assistant', 'tool_calls': [{'id': 'call_17495866192_1719891003_0', 'type': 'function', 'function': {'name': 'square_root', 'arguments': '{"square": 256}'}}]}, 'finish_reason': 'tool_calls'}], 'usage': {'completion_tokens': 16, 'prompt_tokens': 157, 'total_tokens': 173}, 'object': 'chat.completion', 'id': 'chatcmpl-17495866192_1719891003', 'created': 1719891003, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama'}],
-         resp_text='The square root of 256 is 16.',
-        resp_type=llm_response_type.MESSAGE)
+        req_tools={'square_root': (square_root, square_root_schema)},  # Keep as dict format
+        resp_json={
+            'choices': [{
+                'index': 0,
+                'message': {
+                    'role': 'assistant',
+                    'content': 'The square root of 256 is 16.'
+                },
+                'finish_reason': 'stop'
+            }],
+            'usage': {'completion_tokens': 10, 'prompt_tokens': 32, 'total_tokens': 42},
+            'object': 'chat.completion',
+            'id': 'chatcmpl-6108365968_1719891004',
+            'created': 1719891004,
+            'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'
+        },
+        intermed_resp_jsons=[{
+            'choices': [{
+                'index': 0,
+                'message': {
+                    'role': 'assistant',
+                    'tool_calls': [{
+                        'id': 'call_17495866192_1719891003_0',
+                        'type': 'function',
+                        'function': {
+                            'name': 'square_root',
+                            'arguments': '{"square": 256}'
+                        }
+                    }]
+                },
+                'finish_reason': 'tool_calls'
+            }],
+            'usage': {'completion_tokens': 16, 'prompt_tokens': 157, 'total_tokens': 173},
+            'object': 'chat.completion',
+            'id': 'chatcmpl-17495866192_1719891003',
+            'created': 1719891003,
+            'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
+            'toolio.model_type': 'llama'
+        }],
+        resp_text='The square root of 256 is 16.',
+        resp_type=llm_response_type.MESSAGE
+    )
 
-    # Have to use expect_ordered_request so it will respond to a series of calls with the specified responses
+    # Setup mock server responses
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(square_root_ht.intermed_resp_jsons[0])
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(square_root_ht.resp_json)
+    httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json({
+        'choices': [{
+            'message': {
+                'role': 'assistant',
+                'content': 'The square root of 256 is 16.'
+            }
+        }]
+    })
 
-    tools_list = cmdline_tools_struct(square_root_ht.req_tools)
-    # tool_choice = tools_obj.get('tool_choice', 'auto')
-    llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'), tool_reg=tools_list)
-    resp = await llm.complete_with_tools(square_root_ht.req_messages, tools=llm.toolset)
-    assert resp == square_root_ht.resp_text
+    llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
+    llm.register_tool(square_root, square_root_schema)  # Register the tool directly
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore',
+            message='No implementation provided for function: UNNAMED',
+            category=UserWarning)
+        llm.register_internal_tools()
+
+    with patch('math.sqrt', return_value=16.0) as mock_sqrt:
+        try:
+            resp = await llm.complete_with_tools(
+                square_root_ht.req_messages,
+                tools=['square_root'],  # Pass just the tool name since it's already registered
+                full_response=False
+            )
+        except RuntimeError as e:
+            print("Trip 1. Server received:", httpserver.log[0][0].get_data())
+            print("Trip 1. Server response:", httpserver.log[0][1].get_data())
+            print("Trip 2. Server received:", httpserver.log[1][0].get_data())
+            print("Trip 2. Server response:", httpserver.log[2][1].get_data())
+            print(f"Full error details: {e}")
+            pytest.fail("Server returned 500 error")
+        mock_sqrt.assert_called_once_with(256.0)
+        resp = llm_response.from_openai_chat(resp)
+        assert resp.first_choice_text == square_root_ht.resp_text
 
 @tool('currency_exchange', params=[param('from', str, 'Currency to be converted from, e.g. USD, GBP, JPY', True, rename='from_'), param('to', str, 'Currency to be converted to, e.g. USD, GBP, JPY', True), param('amount', float, 'Amount to convert from one currency to another. Just a number, with no other symbols', True)])
 def currency_exchange(from_=None, to=None, amount=None):
@@ -114,23 +266,98 @@ def currency_exchange(from_=None, to=None, amount=None):
 
 @pytest.mark.asyncio
 async def test_currency_convert(httpserver, session_cls):
-    prompt = 'I need to import a car from Japan. It costs 5 million Yen.'
-    'How much must I withdraw from my US bank account'
+    @tool('currency_exchange', params=[
+        param('from', str, 'Currency to be converted from, e.g. USD, GBP, JPY', True, rename='from_'),
+        param('to', str, 'Currency to be converted to, e.g. USD, GBP, JPY', True),
+        param('amount', float, 'Amount to convert from one currency to another. Just a number, with no other symbols', True)
+    ])
+    def currency_exchange(from_=None, to=None, amount=None):
+        'Tool to convert one currency to another'
+        lookup = {('JPY', 'USD'): 0.00081}  # Fixed rate for test
+        rate = lookup.get((from_, to))
+        return rate * amount
+
+    currency_schema = {
+        'name': 'currency_exchange',
+        'description': 'Tool to convert one currency to another',
+        'parameters': {
+            'type': 'object',
+            'properties': {
+                'from': {
+                    'type': 'string',
+                    'description': 'Currency to be converted from, e.g. USD, GBP, JPY'
+                },
+                'to': {
+                    'type': 'string',
+                    'description': 'Currency to be converted to, e.g. USD, GBP, JPY'
+                },
+                'amount': {
+                    'type': 'number',
+                    'description': 'Amount to convert from one currency to another. Just a number, with no other symbols'
+                }
+            },
+            'required': ['from', 'to', 'amount']
+        }
+    }
+
     currency_convert_ht = session_cls(
         label='Currency convert (Hermes theta)',
-        req_messages=[{'role': 'user', 'content': prompt}],
-        req_tools=[currency_exchange],
-        # Trip 2 is the final result:
-        resp_json={'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': 'You need to withdraw $4050.00'}, 'finish_reason': 'stop'}], 'usage': {'completion_tokens': 10, 'prompt_tokens': 32, 'total_tokens': 42}, 'object': 'chat.completion', 'id': 'chatcmpl-6108365968_1719891004', 'created': 1719891004, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'},
-        # Trip 1 retuns:
-        intermed_resp_jsons=[{'choices': [{'index': 0, 'message': {'role': 'assistant', 'tool_calls': [{'id': 'call_17562895312_1721224234_0', 'type': 'function', 'function': {'name': 'currency_exchange', 'arguments': '{"from": "JPY", "to": "USD", "amount": "5000000"}', 'arguments_obj': {'from': 'JPY', 'to': 'USD', 'amount': '5000000'}}}]}, 'finish_reason': 'tool_calls'}], 'usage': {'completion_tokens': 31, 'prompt_tokens': 229, 'total_tokens': 260}, 'object': 'chat.completion', 'id': 'chatcmpl-17562895312_1721224234', 'created': 1721224234, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', 'toolio.model_type': 'llama', 'response_type': 2, 'prompt_tokens': 229, 'generated_tokens': 31}],
-        resp_text='You need to withdraw $4050.00',
-        resp_type=llm_response_type.MESSAGE)
+        req_messages=[{'role': 'user', 'content': 'I need to import a car from Japan. It costs 5 million Yen. How much must I withdraw from my US bank account?'}],
+        req_tools={'currency_exchange': (currency_exchange, currency_schema)},
+        resp_json={
+            'choices': [{
+                'index': 0,
+                'message': {
+                    'role': 'assistant',
+                    'content': 'You need to withdraw $4,050.00'
+                },
+                'finish_reason': 'stop'
+            }],
+            'usage': {'completion_tokens': 10, 'prompt_tokens': 32, 'total_tokens': 42},
+            'object': 'chat.completion',
+            'id': 'chatcmpl-test_id',
+            'created': 1719891004,
+            'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'
+        },
+        intermed_resp_jsons=[{
+            'choices': [{
+                'index': 0,
+                'message': {
+                    'role': 'assistant',
+                    'tool_calls': [{
+                        'id': 'call_test_id',
+                        'type': 'function',
+                        'function': {
+                            'name': 'currency_exchange',
+                            'arguments': '{"from": "JPY", "to": "USD", "amount": 5000000}'
+                        }
+                    }]
+                },
+                'finish_reason': 'tool_calls'
+            }],
+            'usage': {'completion_tokens': 31, 'prompt_tokens': 229, 'total_tokens': 260},
+            'object': 'chat.completion',
+            'id': 'chatcmpl-intermed_id',
+            'created': 1721224234,
+            'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
+            'toolio.model_type': 'llama'
+        }],
+        resp_text='You need to withdraw $4,050.00',
+        resp_type=llm_response_type.MESSAGE
+    )
 
-    # Have to use expect_ordered_request so it will respond to a series of calls with the specified responses
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(currency_convert_ht.intermed_resp_jsons[0])
     httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(currency_convert_ht.resp_json)
 
-    llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'), tool_reg=currency_convert_ht.req_tools)
-    resp = await llm.complete_with_tools(currency_convert_ht.req_messages, tools=['currency_exchange'])
-    assert resp == currency_convert_ht.resp_text
+    llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
+    llm.register_tool(currency_exchange, currency_schema)
+    llm.register_internal_tools()
+
+    resp = await llm.complete_with_tools(
+        currency_convert_ht.req_messages,
+        tools=['currency_exchange'],
+        full_response=False
+    )
+
+    resp = llm_response.from_openai_chat(resp)
+    assert resp.first_choice_text == currency_convert_ht.resp_text

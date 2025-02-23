@@ -183,6 +183,10 @@ class struct_mlx_chat_api(toolcall_mixin):
             else:
                 raise RuntimeError(f'Unexpected response from {self.base_url}/{req}:\n{repr(result)}')
 
+    def register_internal_tools(self):
+        for tool_spec in DEFAULT_INTERNAL_TOOLS:
+            self.register_tool(None, tool_spec)
+
 
 def cmdline_tools_struct(tools_obj):
     'Specifying a function on the command line calls for a specialized format. Processes it for model managers'
