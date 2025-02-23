@@ -58,7 +58,7 @@ async def test_boulder_weather_1(httpserver, session_cls):
     @tool('get_current_weather', desc='Get the current weather in a given location',
           params=[
               param('location', str, 'City and state, e.g. San Francisco, CA', True),
-              param('unit', str, 'Temperature unit', False)  # , enum=['℃', '℉'] # Cool idea for tools
+              param('unit', str, 'Temperature unit', False)  # , enum=['℃', '℉'] # Cool idea for tools spec
           ])
     def get_current_weather(location, unit=None):
         return {"temperature": 72, "unit": unit or "℉"}
@@ -128,18 +128,53 @@ async def test_boulder_weather_1(httpserver, session_cls):
         resp_type=llm_response_type.MESSAGE
     )
 
-    httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(boulder_weather_trip1_ht.intermed_resp_jsons[0])
-    httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(boulder_weather_trip1_ht.resp_json)
+    # Request handlers to record the requests
+    first_request = httpserver.expect_ordered_request(
+        CHAT_COMPLETIONS_URL,
+        method='POST'
+    ).respond_with_json(boulder_weather_trip1_ht.intermed_resp_jsons[0])
+
+    second_request = httpserver.expect_ordered_request(
+        CHAT_COMPLETIONS_URL,
+        method='POST'
+    ).respond_with_json(boulder_weather_trip1_ht.resp_json)
+    request3 = httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json({
+        'choices': [{
+            'message': {
+                'role': 'assistant',
+                'content': 'The current temperature in Boulder is 72℉.'
+            }
+        }]
+    })
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
     llm.register_tool(get_current_weather, weather_schema)
-    llm.register_internal_tools()
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore',
+            message='No implementation provided for function: UNNAMED',
+            category=UserWarning)
+        llm.register_internal_tools()
 
-    resp = await llm.complete_with_tools(
-        boulder_weather_trip1_ht.req_messages,
-        tools=['get_current_weather'],
-        full_response=False
-    )
+    try:
+        resp = await llm.complete_with_tools(
+            boulder_weather_trip1_ht.req_messages,
+            tools=['get_current_weather'],
+            full_response=False
+        )
+    except RuntimeError as e:
+        print("Trip 1. Server received:", httpserver.log[0][0].get_data())
+        print("Trip 1. Server response:", httpserver.log[0][1].get_data())
+        print("Trip 2. Server received:", httpserver.log[1][0].get_data())
+        print("Trip 2. Server response:", httpserver.log[2][1].get_data())
+        print(f"Full error details: {e}")
+        pytest.fail("Server returned 500 error")
+
+    # Verify the requests after the calls
+    assert len(httpserver.log) >= 2  # We should have at least 2 requests
+    assert httpserver.log[0][0].method == 'POST'  # First request
+    assert httpserver.log[0][0].url.endswith(CHAT_COMPLETIONS_URL)
+    assert httpserver.log[1][0].method == 'POST'  # Second request
+    assert httpserver.log[1][0].url.endswith(CHAT_COMPLETIONS_URL)
 
     resp = llm_response.from_openai_chat(resp)
     assert resp.first_choice_text == boulder_weather_trip1_ht.resp_text
@@ -346,18 +381,53 @@ async def test_currency_convert(httpserver, session_cls):
         resp_type=llm_response_type.MESSAGE
     )
 
-    httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(currency_convert_ht.intermed_resp_jsons[0])
-    httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json(currency_convert_ht.resp_json)
+    # Set up request handlers that will record the requests
+    first_request = httpserver.expect_ordered_request(
+        CHAT_COMPLETIONS_URL,
+        method='POST'
+    ).respond_with_json(currency_convert_ht.intermed_resp_jsons[0])
+
+    second_request = httpserver.expect_ordered_request(
+        CHAT_COMPLETIONS_URL,
+        method='POST'
+    ).respond_with_json(currency_convert_ht.resp_json)
+    request3 = httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json({
+        'choices': [{
+            'message': {
+                'role': 'assistant',
+                'content': 'You need to withdraw $4,050.00'
+            }
+        }]
+    })
 
     llm = struct_mlx_chat_api(base_url=httpserver.url_for('/v1'))
     llm.register_tool(currency_exchange, currency_schema)
-    llm.register_internal_tools()
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore',
+            message='No implementation provided for function: UNNAMED',
+            category=UserWarning)
+        llm.register_internal_tools()
 
-    resp = await llm.complete_with_tools(
-        currency_convert_ht.req_messages,
-        tools=['currency_exchange'],
-        full_response=False
-    )
+    try:
+        resp = await llm.complete_with_tools(
+            currency_convert_ht.req_messages,
+            tools=['currency_exchange'],
+            full_response=False
+        )
+    except RuntimeError as e:
+        print("Trip 1. Server received:", httpserver.log[0][0].get_data())
+        print("Trip 1. Server response:", httpserver.log[0][1].get_data())
+        print("Trip 2. Server received:", httpserver.log[1][0].get_data())
+        print("Trip 2. Server response:", httpserver.log[2][1].get_data())
+        print(f"Full error details: {e}")
+        pytest.fail("Server returned 500 error")
+
+    # Verify the requests after the calls
+    assert len(httpserver.log) >= 2  # We should have at least 2 requests
+    assert httpserver.log[0][0].method == 'POST'  # First request
+    assert httpserver.log[0][0].url.endswith(CHAT_COMPLETIONS_URL)
+    assert httpserver.log[1][0].method == 'POST'  # Second request
+    assert httpserver.log[1][0].url.endswith(CHAT_COMPLETIONS_URL)
 
     resp = llm_response.from_openai_chat(resp)
     assert resp.first_choice_text == currency_convert_ht.resp_text
