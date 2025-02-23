@@ -23,7 +23,7 @@ from amara3 import iri
 from ogbujipt import word_loom
 
 
-class model_flag(Flag):
+class model_flag(int, Flag):
     NO_SYSTEM_ROLE = auto()  # e.g. Gemma blows up if you use a system message role
     USER_ASSISTANT_ALT = auto()  # Model requires alternation of message roles user/assistant only
     TOOL_RESPONSE = auto()  # Model expects responses from tools via OpenAI API style messages
@@ -47,6 +47,7 @@ FLAGS_LOOKUP = {
 }
 
 TOOLIO_MODEL_TYPE_FIELD = 'toolio.model_type'
+TOOLIO_MODEL_FLAGS_FIELD = 'toolio.model_flags'
 
 DEFAULT_JSON_SCHEMA_CUTOUT = '#!JSON_SCHEMA!#'
 

@@ -13,7 +13,8 @@ import logging
 import click
 from ogbujipt.llm_wrapper import prompt_to_chat
 
-from toolio.client import struct_mlx_chat_api, llm_response_type, cmdline_tools_struct
+# from toolio.common import llm_response_type
+from toolio.client import struct_mlx_chat_api, cmdline_tools_struct
 
 # List of known loggers with too much chatter at debug level
 TAME_LOGGERS = ['asyncio', 'httpcore', 'httpx']

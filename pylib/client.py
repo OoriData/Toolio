@@ -23,7 +23,7 @@ from toolio.toolcall import (
     TOOL_CHOICE_NONE, TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS,
     TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME, CM_TOOLS_LEFT, CM_NO_TOOLS_LEFT)
 from toolio.response_helper import llm_response
-from toolio.common import llm_response_type
+from toolio.common import model_flag
 
 HTTP_SUCCESS = 200
 
@@ -70,25 +70,6 @@ class struct_mlx_chat_api(toolcall_mixin):
 
         super().__init__(model_type=None, tool_reg=tool_reg, logger=logger,
                         default_schema=default_schema, json_schema_cutout=json_schema_cutout)
-
-    async def _http_trip(self, req, req_data, timeout, apikey):
-        '''Single call/response to toolio_server.  Multiple might be involved in the case of tool-calling'''
-        header = {'Content-Type': 'application/json'}
-        # if apikey is None:
-        #     apikey = self.apikey
-        # if apikey:
-        #     header['Authorization'] = f'Bearer {apikey}'
-        req_data['stream'] = False
-        # import pprint; pprint.pprint(req_data)
-        async with httpx.AsyncClient() as client:
-            result = await client.post(
-                f'{self.base_url}/{req.strip("/")}', json=req_data, headers=header, timeout=timeout)
-
-            if result.status_code == HTTP_SUCCESS:
-                # return llm_response.from_openai_chat(result.json())
-                return result.json()  # Even if it's plain text it needs to be JSON decoded b/c of Content-Type header
-            else:
-                raise RuntimeError(f'Unexpected response from {self.base_url}/{req}:\n{repr(result)}')
 
     async def complete(self, messages, full_response=False, req='chat/completions', json_schema=None, sysprompt=None,
                        apikey=None, trip_timeout=90.0, max_tokens=1024, temperature=0.1, **kwargs):
@@ -145,8 +126,9 @@ class struct_mlx_chat_api(toolcall_mixin):
                     return resp
 
                 resp = llm_response.from_openai_chat(resp)
-                results = await self._execute_tool_calls(resp.tool_calls, tools)
-                await self._handle_tool_results(messages, results, tools, self._remove_used_tools)
+                model_flags = model_flag(resp.model_flags)
+                results = await self._execute_tool_calls(resp.tool_calls)
+                await self._handle_tool_results(messages, results, tools, model_flags=model_flags, remove_used_tools=self._remove_used_tools)
             else:
                 break
 
@@ -180,6 +162,26 @@ class struct_mlx_chat_api(toolcall_mixin):
                                                 temperature=temperature, **kwargs)
 
         return resp
+
+    async def _http_trip(self, req, req_data, timeout, apikey):
+        '''Single call/response to toolio_server.  Multiple might be involved in the case of tool-calling'''
+        header = {'Content-Type': 'application/json'}
+        # if apikey is None:
+        #     apikey = self.apikey
+        # if apikey:
+        #     header['Authorization'] = f'Bearer {apikey}'
+        req_data['stream'] = False
+        # import pprint; pprint.pprint(req_data)
+        # print((self.base_url, req.strip('/')))
+        async with httpx.AsyncClient() as client:
+            result = await client.post(
+                f'{self.base_url}/{req.strip("/")}', json=req_data, headers=header, timeout=timeout)
+
+            if result.status_code == HTTP_SUCCESS:
+                # return llm_response.from_openai_chat(result.json())
+                return result.json()  # Even if it's plain text it needs to be JSON decoded b/c of Content-Type header
+            else:
+                raise RuntimeError(f'Unexpected response from {self.base_url}/{req}:\n{repr(result)}')
 
 
 def cmdline_tools_struct(tools_obj):

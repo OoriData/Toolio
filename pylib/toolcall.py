@@ -13,7 +13,8 @@ from time import time_ns
 
 from toolio.http_schematics import V1Function
 
-from toolio.common import llm_response_type, model_runner_base, LANG, model_flag, DEFAULT_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT
+from toolio.common import (llm_response_type, model_runner_base, LANG, model_flag,
+                           FLAGS_LOOKUP, DEFAULT_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT)
 from toolio.util import check_callable
 from toolio.http_schematics import V1ChatMessage
 
@@ -155,7 +156,7 @@ class mixin(model_runner_base):
                 # args = json.loads(tc.arguments)
                 args = tc.arguments
                 direct_resp_text = args['response']
-                self.logger.debug(f'LLM chose to bypass function-calling witht he following response: {direct_resp_text}')
+                self.logger.debug(f'LLM chose to bypass function-calling with the following response: {direct_resp_text}')
                 # Reconstruct an OpenAI-style response
                 # choice = response['choices'][0]
                 choice = response.choices[0]
@@ -189,11 +190,11 @@ class mixin(model_runner_base):
 # print(f"Positional arguments: {positional_count}")
 # print(f"Keyword arguments: {keyword_count}")
 
-    async def _execute_tool_calls(self, tool_calls, req_tools):
+    async def _execute_tool_calls(self, tool_calls):
         tool_results = []
-        for tc in tool_calls:
+        for tc in tool_calls or []:
             call_id = tc.id
-            tool, _ = req_tools.get(tc.name, (None, None))
+            tool, _ = self._tool_registry.get(tc.name, (None, None))
             if tool is None:
                 warnings.warn(f'Tool called, but it has no function implementation: {tc.name}')
                 continue
@@ -218,16 +219,16 @@ class mixin(model_runner_base):
             tool_results.append((call_id, tc.name, tc.arguments, result))
         return tool_results
 
-    async def _handle_tool_results(self, messages, results, req_tools, req_tool_spec=None, remove_used_tools=True):
+    async def _handle_tool_results(self, messages, results, req_tools, model_flags=None, remove_used_tools=True):
         '''
         Handle tool results and update messages accordingly
         
         Args:
             messages: Current message history
             response: Response from LLM containing tool calls
-            req_tools: Dictionary of available tools
-            req_tool_spec: Optional tool specifications (needed for continue message)
+            req_tools: List of available tools
         '''
+        model_flags = model_flags or self.model_flags
         called_names = []
         for call_id, callee_name, callee_args, result in results:
             # print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
@@ -235,12 +236,13 @@ class mixin(model_runner_base):
                             model_flags=self.model_flags)
             called_names.append(callee_name)
 
-        continue_msg = CM_TOOLS_LEFT if req_tool_spec else CM_NO_TOOLS_LEFT
-        set_continue_message(messages, continue_msg, model_flags=self.model_flags)
-
         if remove_used_tools:
-            req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
-            req_tool_spec = [s for f, s in req_tools.values()]
+            # req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
+            # req_tool_spec = [s for f, s in req_tools.values()]
+            req_tools = [t for t in req_tools if t not in called_names]
+
+        continue_msg = CM_TOOLS_LEFT if req_tools else CM_NO_TOOLS_LEFT
+        set_continue_message(messages, continue_msg, model_flags=model_flags)
         return called_names
 
 

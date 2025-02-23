@@ -24,17 +24,14 @@ resp_json = resp.to_json()
 '''
 import time
 import json
-import warnings
+# import warnings
 from dataclasses import dataclass, field
 from typing import Optional, Dict
 from enum import Enum, auto
 
-
-# from ogbujipt.config import attr_dict
-from ogbujipt.llm_wrapper import response_type
-
-from toolio.common import llm_response_type, TOOLIO_MODEL_TYPE_FIELD
-from toolio.toolcall import tool_call_response_mixin, parse_genresp_tool_calls  # tool_call
+from toolio.common import (llm_response_type, model_flag,
+                           TOOLIO_MODEL_TYPE_FIELD, TOOLIO_MODEL_FLAGS_FIELD, FLAGS_LOOKUP, DEFAULT_FLAGS)
+from toolio.toolcall import tool_call_response_mixin, parse_genresp_tool_calls, tool_call
 
 class response_state(Enum):
     '''States for tracking response generation'''
@@ -59,6 +56,7 @@ class llm_response(tool_call_response_mixin):
     created: int = None
     model: str = None
     model_type: str = None
+    model_flags: model_flag = DEFAULT_FLAGS
 
     _first_choice_text: str = None
     tool_schema: dict = None
@@ -111,27 +109,35 @@ class llm_response(tool_call_response_mixin):
         # Process choices
         choices = []
         _first_choice_text = None
+        tool_calls = None
         if response.get('choices'):
             choices = response['choices']
             rc1 = choices[0]
+            message = rc1.get('message', {})
 
             # Check for tool calls
-            if rc1.get('message', {}).get('tool_calls'):
-                assert rc1['message']['tool_calls'], 'If tool_calls is present, it must not be empty'
+            if message.get('tool_calls'):
+                assert message['tool_calls'], 'If tool_calls is present, it must not be empty'
                 resp_type = llm_response_type.TOOL_CALL
-                # Process tool call arguments
+                # Process tool call arguments; Convert to tool_call objects
                 # WTH does OpenAI have these arguments properties as plain text? Seems a massive layering violation
-                for tc in rc1['message']['tool_calls']:
-                    tc['function']['arguments_obj'] = json.loads(tc['function']['arguments'])
+                tool_calls = [
+                    tool_call(
+                        id=tc['id'],
+                        name=tc['function']['name'],
+                        arguments=json.loads(tc['function']['arguments'])
+                    )
+                    for tc in message['tool_calls']
+                ]
             else:
                 _first_choice_text = (
                     rc1.get('text') or 
-                    rc1.get('message', {}).get('content', '')
+                    message.get('content', '')
                 )
         else:
             _first_choice_text = response.get('content')
 
-        # Create response object
+        model_type = response.get(TOOLIO_MODEL_TYPE_FIELD)
         resp = llm_response(
             response_type=resp_type,
             choices=choices,
@@ -140,12 +146,18 @@ class llm_response(tool_call_response_mixin):
             id=response.get('id'), 
             created=response.get('created'),
             model=response.get('model'),
-            model_type=response.get(TOOLIO_MODEL_TYPE_FIELD)
+            model_type=model_type,
+            # model_flags=response.get(TOOLIO_MODEL_FLAGS_FIELD)
+            model_flags=FLAGS_LOOKUP.get(model_type, DEFAULT_FLAGS)
         )
 
         # Add first choice text as property
         if _first_choice_text is not None:
             resp._first_choice_text = _first_choice_text
+
+        # Add tool calls if present
+        if tool_calls:
+            resp.tool_calls = tool_calls
 
         return resp
 
@@ -189,7 +201,8 @@ class llm_response(tool_call_response_mixin):
             id=f'cmpl-{int(resp_t)}',
             created=int(resp_t / 1e9),
             model=model_name,
-            model_type=model_type
+            model_type=model_type,
+            model_flags = FLAGS_LOOKUP.get(model_type, DEFAULT_FLAGS)
         )
 
         if tool_schema:
@@ -274,6 +287,7 @@ class llm_response(tool_call_response_mixin):
             resp_dict['model'] = self.model
         if self.model_type:
             resp_dict[TOOLIO_MODEL_TYPE_FIELD] = self.model_type
+            resp_dict[TOOLIO_MODEL_FLAGS_FIELD] = self.model_flags
 
         return resp_dict
 
@@ -295,6 +309,7 @@ class llm_response(tool_call_response_mixin):
         # Preserve model type info if available
         if self.model_type:
             resp[TOOLIO_MODEL_TYPE_FIELD] = self.model_type
+            resp[TOOLIO_MODEL_FLAGS_FIELD] = self.model_flags
 
         # Convert choices to OpenAI format
         for choice in self.choices:

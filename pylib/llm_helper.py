@@ -171,17 +171,17 @@ class model_manager(toolcall_mixin):
                 break
 
             # XXX: What if generation finishes due to length
+            # debug('LLM response:', response)
             if response.response_type == llm_response_type.TOOL_CALL:
-                if self.server_mode:
-                    # In server mode, just return the tool calls without executing
-                    return response if full_response else str(response)
-
-                # print('LLM response:', response)
                 bypass_response = self._check_tool_handling_bypass(response)
                 if bypass_response:
                     # LLM called an internal tool either as a bypass, or for finishing up
                     return (llm_response.from_openai_chat(bypass_response)
                             if full_response else bypass_response['choices'][0]['message']['content'])
+
+                if self.server_mode:
+                    # In server mode, just return the tool calls without executing
+                    return response if full_response else str(response)
 
                 if trips_remaining <= 0:
                     # No more available trips; don't bother calling tools
@@ -189,8 +189,8 @@ class model_manager(toolcall_mixin):
                     self.logger.debug(msg)
                     return response if full_response else str(response)
 
-                results = await self._execute_tool_calls(response.tool_calls, req_tools)
-                await self._handle_tool_results(messages, results, req_tools, self._remove_used_tools)
+                results = await self._execute_tool_calls(response.tool_calls)
+                await self._handle_tool_results(messages, results, req_tools, model_flags=self.model_flags, remove_used_tools=self._remove_used_tools)
             elif response.response_type == llm_response_type.MESSAGE:  # Direct response without tool calls
                 return response if full_response else response.accumulated_text
             else:

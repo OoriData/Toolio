@@ -60,7 +60,7 @@ async def post_v1_chat_completions_impl(state, req_data: V1ChatCompletionsReques
 
     try:
         if tools:
-            debug('Tool-calling completion. Starting generation…')
+            # debug('Tool-calling completion. Starting generation…')
             # Pass tools through without resolving implementations
             response = await state.model_runner.complete_with_tools(
                 messages,
@@ -83,4 +83,5 @@ async def post_v1_chat_completions_impl(state, req_data: V1ChatCompletionsReques
             content='Invalid prompting' + str(e), status_code=status.HTTP_400_BAD_REQUEST
         )
 
-    return response.to_openai_chat_response()
+    response.model_flags = int(response.model_flags)
+    return JSONResponse(response.to_openai_chat_response())

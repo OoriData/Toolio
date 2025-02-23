@@ -119,7 +119,7 @@ async def post_v1_chat_completions(req_data: V1ChatCompletionsRequest):
     #     )
     # else:
     response = await post_v1_chat_completions_impl(app.state, req_data)
-    debug('RESPONSE:', response)
+    debug('RESPONSE:', response.body)
     return response
 
 
@@ -145,6 +145,7 @@ def main(host, port, model, default_schema, default_schema_file, llmtemp, worker
     logging.basicConfig(level=loglevel)
     logger = logging.getLogger(__name__)
     logger.setLevel(loglevel)  # Seems redundant, but is necessary. Python logging is quirky
+    app.state.model_runner = logger
 
     app_params.update(model=model, default_schema=default_schema, default_schema_fpath=default_schema_file,
                       llmtemp=llmtemp)
