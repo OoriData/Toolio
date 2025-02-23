@@ -104,8 +104,7 @@ class model_manager(toolcall_mixin):
             else:
                 yield gr.text
 
-    async def complete_with_tools(self, messages, full_response=False,
-                                  tools=None, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
+    async def complete_with_tools(self, messages, tools=None, max_trips=3, tool_choice=TOOL_CHOICE_AUTO,
                                   temperature=None, **kwargs):
         '''
         Complete using specified tools. Makes multiple completion trips if needed for tool calling.
@@ -122,6 +121,9 @@ class model_manager(toolcall_mixin):
             tool_choice (str): Control over tool selection ('auto', 'none', etc)
             temperature (float): Optional sampling temperature
             **kwargs: Additional arguments passed to completion
+
+        returns:
+            llm_response object, always (unlike complete() which returns plain text if you specify full_response=False)
         '''
         if self.server_mode:
             # In server mode, don't try to resolve or execute tools
@@ -146,17 +148,13 @@ class model_manager(toolcall_mixin):
 
             # No tools left means just do a regular completion
             if not req_tool_spec:
-                chunks = []
                 response = None
-                async for chunk in self.iter_complete(messages, temperature=temperature, simple=not full_response, **kwargs):
-                    if full_response:
-                        if response is None:
-                            response = chunk
-                        else:
-                            response.update_from_gen_response(chunk)
+                async for chunk in self.iter_complete(messages, temperature=temperature, simple=False, **kwargs):
+                    if response is None:
+                        response = chunk
                     else:
-                        chunks.append(chunk.first_choice_text if hasattr(chunk, 'first_choice_text') else chunk)
-                return response if full_response else ''.join(chunks)
+                        response.update_from_gen_response(chunk)
+                return response
 
             # Do a completion trip with tools. Start by building tool-call specific schema
             full_schema, tool_schemas, sysmsg = process_tools_for_sysmsg(
@@ -176,28 +174,27 @@ class model_manager(toolcall_mixin):
                 bypass_response = self._check_tool_handling_bypass(response)
                 if bypass_response:
                     # LLM called an internal tool either as a bypass, or for finishing up
-                    return (llm_response.from_openai_chat(bypass_response)
-                            if full_response else bypass_response['choices'][0]['message']['content'])
+                    return llm_response.from_openai_chat(bypass_response)
 
                 if self.server_mode:
                     # In server mode, just return the tool calls without executing
-                    return response if full_response else str(response)
+                    return response
 
                 if trips_remaining <= 0:
                     # No more available trips; don't bother calling tools
                     msg = 'Maximum LLM trips exhausted without a final answer'
                     self.logger.debug(msg)
-                    return response if full_response else str(response)
+                    return response
 
                 results = await self._execute_tool_calls(response.tool_calls)
                 await self._handle_tool_results(messages, results, req_tools, model_flags=self.model_flags, remove_used_tools=self._remove_used_tools)
             elif response.response_type == llm_response_type.MESSAGE:  # Direct response without tool calls
-                return response if full_response else response.accumulated_text
+                return response
             else:
                 self.logger.warning(f'Unexpected response type: {response.response_type}. {response=}')
-                return response if full_response else response.first_choice_text
+                return response
 
-        return response if full_response else str(response)
+        return response
 
     async def _single_toolcalling_completion(self, messages, schema, cache_prompt=False, **kwargs):
         '''Do a single completion trip with tool calling support'''

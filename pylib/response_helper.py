@@ -170,8 +170,10 @@ class llm_response(tool_call_response_mixin):
         if self._first_choice_text is not None:
             return self._first_choice_text
         if self.response_type == llm_response_type.MESSAGE:
-            return self.choices[0]['delta']['content']
-        return None
+            if 'content' in self.choices[0]['delta']:
+                return self.choices[0]['delta']['content']
+            else:  # Handle case where final content wasn't properly updated
+                return getattr(self, 'accumulated_text', None)
 
     @classmethod
     def from_generation_response(cls, gen_resp, model_name=None, model_type=None,
@@ -222,18 +224,19 @@ class llm_response(tool_call_response_mixin):
             gen_resp: GenerationResponse containing new content
         '''
         self.latest_gen_resp = gen_resp  # Convenience for listeners
-        if not gen_resp.text:
-            return
-
         choice0 = self.choices[0]
         delt = choice0.get('delta', choice0.get('message'))
+        
+        # Empty text means we've finished. Update finish_reason
+        if not gen_resp.text:
+            choice0['finish_reason'] = gen_resp.finish_reason
+            return
+
         if self.state == response_state.GATHERING_TOOL_CALLS:
             self.accumulated_text += gen_resp.text
-
             # Try parsing accumulated text as tool calls
             # FIXME: Inefficient to be re-trying the parse for eaxh token. Find a way to get a completion signal before parsing
             tool_calls = parse_genresp_tool_calls(self.accumulated_text)
-
             if tool_calls:
                 # Successfully parsed complete tool calls
                 # assert 'delta' in choice0
@@ -244,17 +247,14 @@ class llm_response(tool_call_response_mixin):
                 self.state = response_state.COMPLETE
                 self.accumulated_text = ''  # Reset for next
                 return
-
         elif self.state == response_state.GATHERING_MESSAGE:
             # assert 'message' in choice0
-            # Regular message content
-            if 'content' not in delt:
-                delt['content'] = gen_resp.text
-            else:
-                delt['content'] += gen_resp.text
+            delt.setdefault('content', '')
+            delt['content'] += gen_resp.text
 
-        # Update finish reason and usage stats
+        # Update finish_reason regardless of text presence
         choice0['finish_reason'] = gen_resp.finish_reason
+
         if gen_resp.prompt_tokens is not None:
             if not self.usage:
                 self.usage = {
@@ -264,9 +264,7 @@ class llm_response(tool_call_response_mixin):
                 }
             else:
                 self.usage['completion_tokens'] = gen_resp.generation_tokens
-                self.usage['total_tokens'] = (
-                    self.usage['prompt_tokens'] + gen_resp.generation_tokens
-                )
+                self.usage['total_tokens'] = self.usage['prompt_tokens'] + gen_resp.generation_tokens
 
     def to_dict(self) -> dict:
         '''Convert to dictionary format'''
