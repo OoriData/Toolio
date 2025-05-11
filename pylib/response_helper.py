@@ -131,7 +131,7 @@ class llm_response(tool_call_response_mixin):
                 ]
             else:
                 _first_choice_text = (
-                    rc1.get('text') or 
+                    rc1.get('text') or
                     message.get('content', '')
                 )
         else:
@@ -143,7 +143,7 @@ class llm_response(tool_call_response_mixin):
             choices=choices,
             usage=usage,
             object=response.get('object'),
-            id=response.get('id'), 
+            id=response.get('id'),
             created=response.get('created'),
             model=response.get('model'),
             model_type=model_type,
@@ -226,7 +226,7 @@ class llm_response(tool_call_response_mixin):
         self.latest_gen_resp = gen_resp  # Convenience for listeners
         choice0 = self.choices[0]
         delt = choice0.get('delta', choice0.get('message'))
-        
+
         # Empty text means we've finished. Update finish_reason
         if not gen_resp.text:
             choice0['finish_reason'] = gen_resp.finish_reason

@@ -503,7 +503,7 @@ SQUARE_ROOT_METADATA = {'name': 'square_root', 'description': 'Get the square ro
                                 'square': {'type': 'number',
                                 'description': 'Number from which to find the square root'}},
                             'required': ['square']}}
-toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
+toolio_mm = local_model_runner('mlx-community/Mistral-Nemo-Instruct-2407-4bit',
                           tool_reg=[(sqrt, SQUARE_ROOT_METADATA)])
 
 # System prompt will be used to direct the LLM's tool-calling
@@ -516,7 +516,8 @@ async def query_sq_root(tmm):
       {'role': 'system', 'content': SYSPROMPT},
       {'role': 'user', 'content': 'What is the square root of 256?'}
       ]
-    print(await tmm.complete_with_tools(msgs))
+    resp_obj = await tmm.complete_with_tools(msgs)
+    print(resp_obj.first_choice_text)
 
 asyncio.run(query_sq_root(toolio_mm))
 ```

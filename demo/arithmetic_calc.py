@@ -42,8 +42,6 @@ async def arithmetic_calc(num1=0, num2=0, op=None):
     return result
 
 
-# Had a problem using Hermes-2-Theta-Llama-3-8B-4bit 😬
-# MLX_MODEL_PATH = 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'
 MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
 
 toolio_mm = local_model_runner(MLX_MODEL_PATH, tool_reg=[arithmetic_calc])
@@ -54,6 +52,6 @@ PROMPT = 'Solve the following calculation: 4242 * 2424.2'
 async def async_main(tmm):
     msgs = [ {'role': 'user', 'content': PROMPT} ]
     rt = await tmm.complete_with_tools(msgs)
-    print(rt)
+    print(rt.first_choice_text)
 
 asyncio.run(async_main(toolio_mm))

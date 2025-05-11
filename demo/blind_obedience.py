@@ -25,7 +25,6 @@ async def indoor_or_outdoor():
     return 'outdoor'
 
 
-# MLX_MODEL_PATH = 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'
 MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
 
 toolio_mm = local_model_runner(MLX_MODEL_PATH, tool_reg=[sky_color, indoor_or_outdoor])
@@ -48,6 +47,6 @@ async def async_main(tmm):
       {'role': 'user', 'content': userprompt}
       ]
     rt = await tmm.complete_with_tools(msgs)
-    print(rt)
+    print(rt.first_choice_text)
 
 asyncio.run(async_main(toolio_mm))

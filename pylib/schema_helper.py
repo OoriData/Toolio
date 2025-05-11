@@ -14,7 +14,7 @@ from typing import Iterable, Union, Any
 import mlx.core as mx
 # from mlx_lm.models.cache import KVCache, _BaseCache
 # from mlx_lm.models.cache import make_prompt_cache
-from mlx_lm.utils import load, stream_generate # , GenerationResponse
+from mlx_lm.generate import load, stream_generate # , GenerationResponse
 
 from toolio.vendor.llm_structured_output import JsonSchemaAcceptorDriver
 from toolio.vendor.llm_structured_output.util.bitmap import highest_bit_set, count_set_bits, bitmap_complement, enumerate_set_bits

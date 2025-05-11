@@ -273,8 +273,11 @@ class local_model_runner(model_manager):
             messages.insert(0, {'role': 'system', 'content': sysprompt})
 
         if tools:
-            resp = await self.complete_with_tools(messages, full_response=full_response, tools=tools, max_trips=max_trips,
+            resp = await self.complete_with_tools(messages, tools=tools, max_trips=max_trips,
                                                 tool_choice=tool_choice, temperature=temperature, **kwargs)
+            if not full_response:
+                resp = resp.first_choice_text
+
         else:
             resp = await self.complete(messages, full_response=full_response, json_schema=json_schema, temperature=temperature, **kwargs)
 

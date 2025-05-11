@@ -64,7 +64,6 @@ async def post_v1_chat_completions_impl(state, req_data: V1ChatCompletionsReques
             # Pass tools through without resolving implementations
             response = await state.model_runner.complete_with_tools(
                 messages,
-                full_response=True,
                 tools=tools,
                 tool_choice=tool_choice,
                 **kwargs

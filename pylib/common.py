@@ -159,8 +159,10 @@ class model_runner_base:
                 new_messages.append(m)
 
         if not cutout_replaced:
-            warnings.warn('JSON Schema provided, but no place found to replace it.'
-                        ' Will be tacked on the end of the first user message', stacklevel=2)
+            # warnings.warn('JSON Schema provided, but no place found to replace it.'
+            #             ' Will be tacked on the end of the first user message', stacklevel=2)
+            self.logger.warning('JSON Schema provided, but no explicit cutout (replacement marker).'
+                        ' Will be tacked on the end of the first user message')
             target_msg = next(m for m in new_messages if m['role'] == 'user')
             # FIXME: More robust message validation, perhaps add a helper in prompt_helper.py
             assert target_msg is not None

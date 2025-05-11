@@ -37,7 +37,7 @@ from toolio.llm_helper import local_model_runner
 import httpx
 
 # Yup. Still HTTP
-ZIPCODE_ENDPOINT = 'http://ZiptasticAPI.com/'
+ZIPCODE_ENDPOINT = 'https://ZiptasticAPI.com/'
 
 @tool('zip_code_info', params=[param('code', str, 'The zip code to look up. Must be only the 5 numbers', True)])
 async def zip_code_info(code=None):
@@ -60,6 +60,6 @@ PROMPT = 'Tell me something about life in zip code 80027'
 async def async_main(tmm):
     msgs = [ {'role': 'user', 'content': PROMPT} ]
     rt = await tmm.complete_with_tools(msgs)
-    print(rt)
+    print(rt.first_choice_text)
 
 asyncio.run(async_main(toolio_mm))

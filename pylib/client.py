@@ -94,7 +94,7 @@ class struct_mlx_chat_api(toolcall_mixin):
         resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
         return resp if full_response else llm_response.from_openai_chat(resp).first_choice_text
 
-    async def complete_with_tools(self, messages, full_response=False, req='chat/completions', tools=None, tool_choice='auto', max_trips=3, sysprompt=None,
+    async def complete_with_tools(self, messages, req='chat/completions', tools=None, tool_choice='auto', max_trips=3, sysprompt=None,
                        apikey=None, trip_timeout=90.0, max_tokens=1024, temperature=0.1, **kwargs):
         '''
         '''
@@ -135,14 +135,19 @@ class struct_mlx_chat_api(toolcall_mixin):
             # No tool calls, return response
             # return resp.get('choices', [{}])[0].get('message', {}).get('content', '')
 
-        return resp if full_response else llm_response.from_openai_chat(resp).first_choice_text
+        return resp
 
-    async def __call__(self, prompt, full_response=False, tools=None, json_schema=None, max_trips=3,
+    async def __call__(self, prompt, full_response=None, tools=None, json_schema=None, max_trips=3,
                        tool_choice='auto', temperature=0.1, sysprompt=None, **kwargs):
         '''
         Convenience interface to complete a prompt, optionally using tools or schema constraints
         Returns just the response text
+
+        if `full_response` is None, the default is chosen according to tool-calling. True if there are tools, else False
         '''
+        if full_response is None:
+            full_response = not tools
+
         if tools and json_schema:
             raise ValueError('Cannot specify both tools and a JSON schema')
 
@@ -155,8 +160,11 @@ class struct_mlx_chat_api(toolcall_mixin):
             messages.insert(0, {'role': 'system', 'content': sysprompt})
 
         if tools:
-            resp = await self.complete_with_tools(messages, full_response=full_response, tools=tools,
+            resp = await self.complete_with_tools(messages, tools=tools,
                                                 tool_choice=tool_choice, temperature=temperature, **kwargs)
+            if not full_response:
+                simple_resp = llm_response.from_openai_chat(resp).first_choice_text
+                resp = simple_resp if simple_resp is not None else resp
         else:
             resp = await self.complete(messages, full_response=full_response, json_schema=json_schema,
                                                 temperature=temperature, **kwargs)
