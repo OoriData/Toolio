@@ -112,7 +112,11 @@ class struct_mlx_chat_api(toolcall_mixin):
             # schema is a dict with description, name, and parameters
             req_tools = [{'type': 'function', 'function': t[1]} for t in self._resolve_tools(tools).values()]
             if tools:
-                req_data = {'messages': messages, 'tools': req_tools, 'tool_choice': tool_choice, 'temperature': temperature, **kwargs}
+                req_data = {'messages': messages, 'tools': req_tools, 'tool_choice': tool_choice, 'temperature': temperature}
+                # Remove full_response from kwargs before passing to _http_trip
+                kwargs_copy = kwargs.copy()
+                kwargs_copy.pop('full_response', None)
+                req_data.update(kwargs_copy)
             else:
                 req_data = {'messages': messages, 'max_tokens': max_tokens, 'temperature': temperature, **kwargs}
 
@@ -131,9 +135,6 @@ class struct_mlx_chat_api(toolcall_mixin):
                 await self._handle_tool_results(messages, results, tools, model_flags=model_flags, remove_used_tools=self._remove_used_tools)
             else:
                 break
-
-            # No tool calls, return response
-            # return resp.get('choices', [{}])[0].get('message', {}).get('content', '')
 
         return resp
 
@@ -171,7 +172,7 @@ class struct_mlx_chat_api(toolcall_mixin):
 
         return resp
 
-    async def _http_trip(self, req, req_data, timeout, apikey):
+    async def _http_trip(self, req, req_data, timeout, apikey, **kwargs):
         '''Single call/response to toolio_server.  Multiple might be involved in the case of tool-calling'''
         header = {'Content-Type': 'application/json'}
         # if apikey is None:

@@ -26,7 +26,6 @@ import time
 import json
 # import warnings
 from dataclasses import dataclass, field
-from typing import Optional, Dict
 from enum import Enum, auto
 
 from toolio.common import (llm_response_type, model_flag,
@@ -177,7 +176,7 @@ class llm_response(tool_call_response_mixin):
 
     @classmethod
     def from_generation_response(cls, gen_resp, model_name=None, model_type=None,
-                               tool_schema: Optional[Dict] = None) -> Optional['llm_response']:
+                               tool_schema: dict | None = None):  # -> 'llm_response' | None:
         '''
         Convert a MLX_LM utils.GenerationResponse (representing a response delta) to llm_response or tool_call_response
 

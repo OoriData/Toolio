@@ -5,12 +5,12 @@
 import platform
 import sys
 
-from toolio import __about__
+from toolio.__about__ import __version__
 from toolio.common import LANG
 
-__all__ = ['LANG', 'model_manager', 'load_or_connect', 'VERSION']
+__all__ = ['LANG', 'model_manager', 'load_or_connect', 'VERSION', '__version__']
 
-VERSION = __about__.__version__
+VERSION = __version__
 
 
 try:
@@ -22,6 +22,8 @@ try:
 
     from toolio.llm_helper import model_manager
 except ImportError:
+    import traceback
+    traceback.print_exc()
     model_manager = None
 
 if model_manager is None:

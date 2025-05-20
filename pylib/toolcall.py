@@ -8,7 +8,6 @@ import time
 import importlib
 import warnings
 from dataclasses import dataclass
-from typing import Optional, List, Any, Dict, Callable
 from time import time_ns
 
 from toolio.http_schematics import V1Function
@@ -482,7 +481,7 @@ class tool_call_response_mixin:
         self.in_function_arguments = False
 
     @classmethod
-    def prepare_hooked_schemas(cls, tools: List[Dict]) -> Dict:
+    def prepare_hooked_schemas(cls, tools: list[dict]) -> dict:
         '''
         Create JSON schema with hooks for tracking tool selection.
         Based on ToolCallStreamingResponder logic.
@@ -531,7 +530,7 @@ class tool_call_response_mixin:
 
         return schema
 
-    def update_from_streaming(self, text: str) -> Optional[Dict]:
+    def update_from_streaming(self, text: str) -> dict | None:
         '''
         Process streaming text during tool call.
         Returns a message dict if text should be emitted.
@@ -564,12 +563,12 @@ class tool_call_response_mixin:
         }
 
     @property
-    def first_tool_call(self) -> Optional[tool_call]:
+    def first_tool_call(self) -> tool_call | None:
         '''Get the first tool call if any'''
         return self.tool_calls[0] if self.tool_calls else None
 
     @property
-    def first_tool_result(self) -> Optional[Any]:
+    def first_tool_result(self) -> any:
         '''Get the first tool result if any'''
         return self.tool_results[0] if self.tool_results else None
 

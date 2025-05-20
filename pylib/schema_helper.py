@@ -9,7 +9,7 @@ JSON schema decoding with MLX
 import functools
 from math import inf
 from operator import itemgetter
-from typing import Iterable, Union, Any
+from typing import Iterable
 
 import mlx.core as mx
 # from mlx_lm.models.cache import KVCache, _BaseCache
@@ -97,7 +97,7 @@ class Model:
 
     def completion(
         self,
-        messages: Union[str, Iterable[dict[str, str]]],
+        messages: str | Iterable[dict[str, str]],
         schema: dict | list | str | None,
         encapsulated: bool = False,
         seed: int | None = None,
