@@ -199,7 +199,8 @@ class model_manager(toolcall_mixin):
     async def _single_toolcalling_completion(self, messages, schema, cache_prompt=False, **kwargs):
         '''Do a single completion trip with tool calling support'''
         response = None
-        for gr in self.model.completion(messages, schema, cache_prompt=cache_prompt, **kwargs):
+        kwargs['schema'] = schema  # Add schema to kwargs
+        for gr in self.model.completion(messages, cache_prompt=cache_prompt, **kwargs):
             if response is None:
                 response = llm_response.from_generation_response(gr, tool_schema=schema,
                                                                  model_name=self.model_path, model_type=self.model_type)

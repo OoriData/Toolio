@@ -137,57 +137,85 @@ async def test_completion_with_schema(mock_model, session_cls):
 @pytest.mark.asyncio
 async def test_tool_calling_flow(mock_model, session_cls, sample_tool):
     '''Test the complete tool calling flow'''
-    # Mock a sequence of responses for tool calling
-    # mock_model.completion.side_effect = [
-    #     # First completion - tool call
-    #     iter([
-    #         {'op': 'evaluatedPrompt', 'token_count': 10},
-    #         {'op': 'generatedTokens', 'text': json.dumps({
-    #             'name': 'sample',
-    #             'arguments': {'arg': 'test_input'}
-    #         })},
-    #         {'op': 'stop', 'reason': 'end', 'token_count': 8}
-    #     ]),
-    #     # Second completion - final response
-    #     iter([
-    #         {'op': 'evaluatedPrompt', 'token_count': 12},
-    #         {'op': 'generatedTokens', 'text': 'Tool returned: Sample: test_input'},
-    #         {'op': 'stop', 'reason': 'end', 'token_count': 6}
-    #     ])
-    # ]
-
+    # Setup test session with initial message
     test_session = session_cls(
         label='Tool calling test',
         req_messages=[{'role': 'user', 'content': 'Use the sample tool'}],
         req_tools=[sample_tool],
         resp_text='Tool returned: Sample: test_input',
-        resp_json=None,  # Not needed for local model
-        intermed_resp_jsons=[]  # Not needed for local model
+        resp_json=None,
+        intermed_resp_jsons=[]
     )
 
     mm = model_manager('test/path', tool_reg=test_session.req_tools)
-    gr_tool = MagicMock()
-    gr_tool.text = json.dumps({
-        'name': 'sample',
-        'arguments': {'arg': 'test_input'}
-    })
-    gr_tool.finish_reason = None
+
+    # First completion sequence - tool call
+    # This simulates the model streaming a tool call response
+    gr_tool_start = MagicMock()
+    gr_tool_start.text = '{"name": "sample", "arguments": {"arg": "test_input"}}'
+    gr_tool_start.finish_reason = None
+    gr_tool_start.prompt_tokens = 10
+    gr_tool_start.generation_tokens = 5
 
     gr_tool_end = MagicMock()
     gr_tool_end.text = ''
     gr_tool_end.finish_reason = 'end'
+    gr_tool_end.prompt_tokens = 10
+    gr_tool_end.generation_tokens = 5
 
-    gr_final = MagicMock()
-    gr_final.text = 'Tool returned: Sample: test_input'
-    gr_final.finish_reason = 'end'
+    # Second completion sequence - final response
+    # This simulates the model streaming the final response after tool execution
+    gr_final_start = MagicMock()
+    gr_final_start.text = 'Tool returned: Sample: test_input'
+    gr_final_start.finish_reason = None
+    gr_final_start.prompt_tokens = 15
+    gr_final_start.generation_tokens = 8
 
+    gr_final_end = MagicMock()
+    gr_final_end.text = ''
+    gr_final_end.finish_reason = 'end'
+    gr_final_end.prompt_tokens = 15
+    gr_final_end.generation_tokens = 8
+
+    # Set up the mock to return our streaming sequences
     mock_model.completion.side_effect = [
-        iter([gr_tool, gr_tool_end]),
-        iter([gr_final])  # or, if needed, add another fake finish message
+        iter([gr_tool_start, gr_tool_end]),  # First completion - tool call
+        iter([gr_final_start, gr_final_end])  # Second completion - final response
     ]
 
+    # Execute the tool calling flow
     result = await mm.complete_with_tools(test_session.req_messages, tools=['sample'])
+
+    # Debug prints
+    # print('\nDEBUG: Final Response Details:')
+    # print(f'Response type: {result.response_type}')
+    # print(f'Choices: {result.choices}')
+    # print(f'First choice text: {result.first_choice_text}')
+    # print(f'Accumulated text: {result.accumulated_text}')
+    # print(f'State: {result.state}')
+    # print(f'Tool calls: {result.tool_calls}')
+    # print(f'Tool results: {result.tool_results}')
+
+    # Verify the final response
+    assert result is not None
+    assert result.response_type == llm_response_type.MESSAGE
     assert result.first_choice_text == test_session.resp_text
+
+    # Verify the tool call was made correctly
+    assert mock_model.completion.call_count == 2  # Should have made two completions
+    first_call_args = mock_model.completion.call_args_list[0][0]
+    second_call_args = mock_model.completion.call_args_list[1][0]
+
+    # Verify first call had tool schema
+    first_call_kwargs = mock_model.completion.call_args_list[0][1]
+    assert 'schema' in first_call_kwargs  # The schema is passed in kwargs
+    assert first_call_kwargs['schema']['type'] == 'array'  # Verify schema structure
+    assert 'items' in first_call_kwargs['schema']  # Verify schema has items
+
+    # Verify second call had tool results in messages
+    second_call_messages = second_call_args[0]
+    assert len(second_call_messages) > len(test_session.req_messages)  # Should have more messages due to tool results
+    assert any('Called tool sample with arguments' in msg.get('content', '') and 'Result: Sample: test_input' in msg.get('content', '') for msg in second_call_messages)
 
 @pytest.mark.asyncio
 async def test_model_flags_handling(mock_model, session_cls):

@@ -112,11 +112,9 @@ class struct_mlx_chat_api(toolcall_mixin):
             # schema is a dict with description, name, and parameters
             req_tools = [{'type': 'function', 'function': t[1]} for t in self._resolve_tools(tools).values()]
             if tools:
-                req_data = {'messages': messages, 'tools': req_tools, 'tool_choice': tool_choice, 'temperature': temperature}
+                req_data = {'messages': messages, 'tools': req_tools, 'tool_choice': tool_choice, 'temperature': temperature, **kwargs}
                 # Remove full_response from kwargs before passing to _http_trip
-                kwargs_copy = kwargs.copy()
-                kwargs_copy.pop('full_response', None)
-                req_data.update(kwargs_copy)
+                req_data.pop('full_response', None)
             else:
                 req_data = {'messages': messages, 'max_tokens': max_tokens, 'temperature': temperature, **kwargs}
 
@@ -127,6 +125,7 @@ class struct_mlx_chat_api(toolcall_mixin):
             if tools and choices and 'message' in choices[0]:
                 if trips_remaining <= 0:
                     self.logger.warning('Max trips reached with pending tool calls')
+                    # return llm_response.from_openai_chat(resp)
                     return resp
 
                 resp = llm_response.from_openai_chat(resp)
@@ -136,7 +135,7 @@ class struct_mlx_chat_api(toolcall_mixin):
             else:
                 break
 
-        return resp
+        return llm_response.from_openai_chat(resp)
 
     async def __call__(self, prompt, full_response=None, tools=None, json_schema=None, max_trips=3,
                        tool_choice='auto', temperature=0.1, sysprompt=None, **kwargs):

@@ -129,10 +129,14 @@ class llm_response(tool_call_response_mixin):
                     for tc in message['tool_calls']
                 ]
             else:
-                _first_choice_text = (
-                    rc1.get('text') or
-                    message.get('content', '')
-                )
+                # Handle both message and delta formats
+                if 'delta' in rc1:
+                    _first_choice_text = rc1['delta'].get('content', '')
+                else:
+                    _first_choice_text = (
+                        rc1.get('text') or
+                        message.get('content', '')
+                    )
         else:
             _first_choice_text = response.get('content')
 
@@ -169,9 +173,14 @@ class llm_response(tool_call_response_mixin):
         if self._first_choice_text is not None:
             return self._first_choice_text
         if self.response_type == llm_response_type.MESSAGE:
-            if 'content' in self.choices[0]['delta']:
-                return self.choices[0]['delta']['content']
-            else:  # Handle case where final content wasn't properly updated
+            choice = self.choices[0]
+            if 'delta' in choice:
+                return choice['delta'].get('content', '')
+            elif 'message' in choice:
+                return choice['message'].get('content', '')
+            elif hasattr(self, 'accumulated_text') and self.accumulated_text:
+                return self.accumulated_text
+            else:
                 return getattr(self, 'accumulated_text', None)
 
     @classmethod
@@ -229,6 +238,9 @@ class llm_response(tool_call_response_mixin):
         # Empty text means we've finished. Update finish_reason
         if not gen_resp.text:
             choice0['finish_reason'] = gen_resp.finish_reason
+            # If we have accumulated text, make sure it's in the choices
+            if self.state == response_state.GATHERING_MESSAGE and self.accumulated_text:
+                delt['content'] = self.accumulated_text
             return
 
         if self.state == response_state.GATHERING_TOOL_CALLS:
@@ -246,10 +258,14 @@ class llm_response(tool_call_response_mixin):
                 self.state = response_state.COMPLETE
                 self.accumulated_text = ''  # Reset for next
                 return
+            # If we're not in tool call mode anymore, switch to message mode
+            if self.response_type == llm_response_type.MESSAGE:
+                self.state = response_state.GATHERING_MESSAGE
         elif self.state == response_state.GATHERING_MESSAGE:
             # assert 'message' in choice0
             delt.setdefault('content', '')
             delt['content'] += gen_resp.text
+            self.accumulated_text = delt['content']  # Keep accumulated_text in sync
 
         # Update finish_reason regardless of text presence
         choice0['finish_reason'] = gen_resp.finish_reason
