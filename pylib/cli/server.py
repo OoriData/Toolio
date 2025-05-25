@@ -38,6 +38,7 @@ from toolio.vendor.llm_structured_output.util.output import info, warning, debug
 from toolio.http_schematics import V1ChatCompletionsRequest
 from toolio.common import DEFAULT_FLAGS, FLAGS_LOOKUP
 from toolio.schema_helper import Model
+from toolio.llm_helper import local_model_runner
 from toolio.http_impl import post_v1_chat_completions_impl
 
 
@@ -65,16 +66,14 @@ async def lifespan(app: FastAPI):
     # Startup code here. Particularly persistence, so that its DB connection pool is set up in the right event loop
     info(f'Loading model ({app_params["model"]})…')
     tstart = time.perf_counter_ns()
-    app.state.model = Model()
-    app.state.params = app_params
     # Can use click's env support if we decide we want this
     # model_path = os.environ['MODEL_PATH']
-    app.state.model.load(app_params['model'])
+    app.state.model_runner = local_model_runner(app_params['model'], server_mode=True)
+    app.state.params = app_params
     tdone = time.perf_counter_ns()
     # XXX: alternate ID option is app.state.model.model.model_type which is a string, e.g. 'gemma2'
     # print(app.state.model.model.__class__, app.state.model.model.model_type)
-    info(f'Model loaded in {(tdone - tstart)/1000000000.0:.3f}s. Type: {app.state.model.model.model_type}')
-    app.state.model_flags = FLAGS_LOOKUP.get(app.state.model.model.model_type, DEFAULT_FLAGS)
+    info(f'Model loaded in {(tdone - tstart)/1000000000.0:.3f}s. Type: {app.state.model_runner.model_type}')
     # Look into exposing control over methods & headers as well
     yield
     # Shutdown code here, if any
@@ -106,16 +105,22 @@ def get_root():
 
 @app.post('/v1/chat/completions')
 async def post_v1_chat_completions(req_data: V1ChatCompletionsRequest):
-    debug('REQUEST', req_data)
+    # Don't allow streaming requests until we can better define their semantics
     if req_data.stream:
-        return StreamingResponse(
-            content=post_v1_chat_completions_impl(app.state, req_data),
-            media_type='text/event-stream',
+        return JSONResponse(
+            content={'status_code': 10400, 'message': 'Streaming requests not supported'},
+            status_code=status.HTTP_400_BAD_REQUEST
         )
-    else:
-        response = await anext(post_v1_chat_completions_impl(app.state, req_data))
-        debug('RESPONSE', response)
-        return response
+    debug('REQUEST:', req_data)
+    # if req_data.stream:
+    #     return StreamingResponse(
+    #         content=post_v1_chat_completions_impl(app.state, req_data),
+    #         media_type='text/event-stream',
+    #     )
+    # else:
+    response = await post_v1_chat_completions_impl(app.state, req_data)
+    debug('RESPONSE:', response.body)
+    return response
 
 
 @click.command()
@@ -140,6 +145,7 @@ def main(host, port, model, default_schema, default_schema_file, llmtemp, worker
     logging.basicConfig(level=loglevel)
     logger = logging.getLogger(__name__)
     logger.setLevel(loglevel)  # Seems redundant, but is necessary. Python logging is quirky
+    app.state.model_runner = logger
 
     app_params.update(model=model, default_schema=default_schema, default_schema_fpath=default_schema_file,
                       llmtemp=llmtemp)

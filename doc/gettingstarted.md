@@ -35,7 +35,7 @@ pip install -Ur requirements-extra.txt
 Launch a Toolio server using an MLX-format LLM:
 
 ```sh
-toolio_server --model=mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
+toolio_server --model=mlx-community/Llama-3.2-3B-Instruct-4bit
 ```
 
 This command downloads and hosts the specified model.
@@ -77,7 +77,7 @@ Use Toolio directly in Python:
 import asyncio
 from toolio.llm_helper import model_manager
 
-toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+toolio_mm = model_manager('mlx-community/Llama-3.2-3B-Instruct-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
@@ -94,7 +94,7 @@ Or the same ting, but iteratively getting chunks of the results, where supported
 import asyncio
 from toolio.llm_helper import model_manager, extract_content
 
-toolio_mm = model_manager('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+toolio_mm = model_manager('mlx-community/Llama-3.2-3B-Instruct-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]

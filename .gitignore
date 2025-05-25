@@ -175,3 +175,4 @@ cython_debug/
 #.idea/
 demo/docker_compose.yaml
 demo/reddit_newsletter/cacert.pem
+.aider*

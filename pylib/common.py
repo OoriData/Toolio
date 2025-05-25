@@ -9,7 +9,7 @@ import json
 import logging
 import warnings
 from pathlib import Path  # noqa: E402
-from enum import Flag, auto
+from enum import Flag, auto, Enum
 
 from amara3 import iri
 
@@ -23,7 +23,7 @@ from amara3 import iri
 from ogbujipt import word_loom
 
 
-class model_flag(Flag):
+class model_flag(int, Flag):
     NO_SYSTEM_ROLE = auto()  # e.g. Gemma blows up if you use a system message role
     USER_ASSISTANT_ALT = auto()  # Model requires alternation of message roles user/assistant only
     TOOL_RESPONSE = auto()  # Model expects responses from tools via OpenAI API style messages
@@ -47,8 +47,16 @@ FLAGS_LOOKUP = {
 }
 
 TOOLIO_MODEL_TYPE_FIELD = 'toolio.model_type'
+TOOLIO_MODEL_FLAGS_FIELD = 'toolio.model_flags'
 
 DEFAULT_JSON_SCHEMA_CUTOUT = '#!JSON_SCHEMA!#'
+
+# XXX: Basically a candidate for replacing the response_type class in ogbujipt
+class llm_response_type(Enum):
+    MESSAGE = 1
+    ERROR = 2
+    TOOL_CALL = 3
+    TOOL_RESULT = 4
 
 
 def load_or_connect(ref: str, **kwargs):
@@ -151,8 +159,10 @@ class model_runner_base:
                 new_messages.append(m)
 
         if not cutout_replaced:
-            warnings.warn('JSON Schema provided, but no place found to replace it.'
-                        ' Will be tacked on the end of the first user message', stacklevel=2)
+            # warnings.warn('JSON Schema provided, but no place found to replace it.'
+            #             ' Will be tacked on the end of the first user message', stacklevel=2)
+            self.logger.warning('JSON Schema provided, but no explicit cutout (replacement marker).'
+                        ' Will be tacked on the end of the first user message')
             target_msg = next(m for m in new_messages if m['role'] == 'user')
             # FIXME: More robust message validation, perhaps add a helper in prompt_helper.py
             assert target_msg is not None
@@ -176,8 +186,21 @@ async def extract_content(resp_stream):
                 yield content
 
 
+# async def response_text(resp_stream):
+#     chunks = []
+#     async for chunk in extract_content(resp_stream):
+#         chunks.append(chunk)
+#     return ''.join(chunks)
+
+
 async def response_text(resp_stream):
     chunks = []
-    async for chunk in extract_content(resp_stream):
+    async for chunk in resp_stream:
         chunks.append(chunk)
     return ''.join(chunks)
+
+
+async def print_response(resp_stream, end='\n', file=None):
+    async for chunk in resp_stream:
+        print(chunk, end='', flush=True, file=file)
+    print('', end=end)

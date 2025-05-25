@@ -14,9 +14,9 @@ Imagine a soccer coach who only gives a pep talk and instructions at the start o
 
 Toolio acts as that crucial sideline coach for your LLM interactions. It provides a framework for implementing in-process controls, allowing you to guide the LLM's output with precision. This is particularly valuable in scenarios where adherence to specific structures are paramount. To be more specific, Toolio supports structural output enforcement by allowing you to specify JSON schemata which guide the output.
 
-As LLMs become increasingly integrated into high-stakes productivity tools, the ability to control and constrain their outputs becomes crucial. Toolio provides developers with the tools they need to harness the power of LLMs while maintaining the precision and reliability required for professional applications.
+As LLMs become increasingly integrated into high-stakes productivity tools, the ability to control and constrain their outputs becomes crucial. Toolio provides developers with the tools they need to harness the power of LLMs while maintaining the precision and reliability required to support complex workflows.
 
-Whether you're building a specialized chatbot, automating content creation, or integrating LLMs into your data analysis pipeline, Toolio offers the flexibility and control you need to deliver consistent, high-quality results.
+Whether you're building a specialized AI assistant, automating content creation, integrating LLMs into your data analysis pipeline, or developing new ways for LLMs to interact with the world, Toolio offers the flexibility and control you need to deliver consistent, high-quality results, a strong foundation for pushing the boundaries of AI software development.
 
 ## Empowering Local LLMs with Agentic Capabilities
 
@@ -36,18 +36,7 @@ Toolio's implementation of tool-calling for locally-hosted LLMs opens up a world
 1. **Enhanced Decision Making**: LLMs can access up-to-date information, perform calculations, or query databases to inform their responses.
 2. **Task Automation**: Complex workflows involving multiple steps and tools can be orchestrated by the LLM.
 3. **Improved Accuracy**: By leveraging specialized tools, LLMs can provide more precise and reliable information.
-4. **Local Control and Privacy**: Unlike cloud-based solutions, Toolio's local approach ensures data privacy and reduces latency.
-
-### The Synergy of Structured Outputs and Tool Calling
-
-Toolio's unique strength lies in the combination of structured outputs and tool-calling capabilities. This synergy creates a powerful ecosystem where:
-
-1. **Reliable Tool Inputs**: Structured outputs ensure that tool inputs are consistently formatted and valid.
-2. **Predictable Workflows**: The LLM's actions become more deterministic and easier to audit.
-3. **Enhanced Error Handling**: Structured responses from tools can be easily parsed and acted upon by the LLM.
-4. **Streamlined Integration**: Developers can more easily connect LLMs with existing systems and APIs.
-
-By combining structured outputs with powerful tool-calling capabilities, Toolio sets a new standard for what's possible with locally-hosted LLMs. Whether you're building advanced AI assistants, automating complex workflows, or developing new ways for LLMs to interact with the world, Toolio provides the foundation you need to push the boundaries of AI application development.
+4. **Local Control and Privacy**: Unlike cloud-based solutions, Toolio's local approach ensures data privacy and reduces latency. Open Source AI resources. Self-hosted Open Source AI models & tools form your GPT Private Agent, handling intelligent tasks for you, without spilling your secrets.
 
 ### On the shoulders of giants
 

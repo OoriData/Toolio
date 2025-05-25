@@ -1,0 +1,8 @@
+AsyncPRAW  # Reddit API - https://asyncpraw.readthedocs.io/
+fire  # CLI tool - https://github.com/google/python-fire
+aiohttp
+asyncpraw
+dash # Front end UI framework
+utiloori # Assorted utilities
+joblib # For caching
+markdown

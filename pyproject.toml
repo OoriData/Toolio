@@ -22,13 +22,15 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
 ]
 dependencies = [
-  # MLX libraries are only installed on Apple Silicon Macs running macOS 13.5+ with Python 3.8+, as requied
-  # platform_release >= '22.6.0': Corresponds to macOS 13.5 or later
-  # FOr more on environment markers see: https://hatch.pypa.io/dev/config/dependency/#environment-markers
-  "mlx>=0.21.1; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8' and platform_release >= '22.6.0'",
-  "mlx_lm>=0.20.6; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8' and platform_release >= '22.6.0'",
-  # "mlx>=0.16.0;platform_version=='arm64'",
-  # "mlx_lm>=0.16.0;platform_version=='arm64'",
+  # MLX libraries are only installed on Apple Silicon Macs running macOS 13.5+ with Python 3.8+, as required
+  # For more on environment markers see: https://hatch.pypa.io/dev/config/dependency/#environment-markers
+  "mlx>=0.23.1; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8'",
+  "mlx_lm>=0.21.4; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8'",
+  # Rather than a marker such as platform_release >= '22.6.0' (corresponding to macOS 13.5 or later) we'll make this a runtime check
+
+  # This is the former logic, but in some scenarios, e.g. running within Docker, we can get platform_release markers such as Linux kernel version "6.10.14-linuxkit", which are not valid version strings according to Python's packaging.version
+  # "mlx>=0.23.1; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8' and platform_release >= '22.6.0'",
+  # "mlx_lm>=0.21.4; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8' and platform_release >= '22.6.0'",
   "ogbujipt>=0.9.3",
   "fastapi>=0.115.3",
   "click",
@@ -181,3 +183,28 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
 ]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "session"
+addopts = "-v"
+# addopts = [
+#   "--cov=toolio",
+#   "--cov-report=term-missing",
+#   "--cov-report=xml",
+#   "--cov-report=html",
+#   "--cov-report=annotate",
+#   "--cov-branch",
+#   "--cov-fail-under=100",
+#   "--cov-context=test",
+#   "--cov-context=toolio",
+#   "--cov-context=pylib",
+#   "--cov-context=resource",
+#   "--cov-context=tests",
+#   "--cov-context=pytest",
+#   "--cov-context=pytest_httpserver",
+#   "--cov-context=pytest_mock",
+#   "--cov-context=pytest_asyncio",
+#   "--cov-context=pytest_httpx",
+#   "--cov-context=pytest_httpx_mock",
+#   "--cov-context=pytest_httpx_mock_async",
+#   "--cov-context=pytest_httpx_mock_sync"]

@@ -4,12 +4,16 @@
 # toolio.prompt_helper
 
 import json
+import time
 import importlib
 import warnings
+from dataclasses import dataclass
+from time import time_ns
 
 from toolio.http_schematics import V1Function
 
-from toolio.common import model_runner_base, LANG, model_flag, DEFAULT_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT
+from toolio.common import (llm_response_type, model_runner_base, LANG, model_flag,
+                           FLAGS_LOOKUP, DEFAULT_FLAGS, DEFAULT_JSON_SCHEMA_CUTOUT)
 from toolio.util import check_callable
 from toolio.http_schematics import V1ChatMessage
 
@@ -80,45 +84,40 @@ class mixin(model_runner_base):
             * actual callable, annotated (i.e. using toolio.tool.tool decorator)
             * plain callable, with schema provided
             * None, with schema provided, in which case a tool is declared but lacking implementation
+            * OpenAI-style function specification dict
 
         schema - explicit schema, i.e. {'name': tname, 'description': tdesc,
-                  'parameters': {'type': 'object', 'properties': t_schema_params, 'required': t_required_list}}
-
+                'parameters': {'type': 'object', 'properties': t_schema_params, 'required': t_required_list}}
         '''
-        if funcpath_or_obj is None:
+        if isinstance(funcpath_or_obj, dict) and funcpath_or_obj.get('type') == 'function':
+            # Handle OpenAI-style function specification
+            func_spec = funcpath_or_obj['function']
+            funcobj = handle_pyfunc(func_spec['pyfunc']) if 'pyfunc' in func_spec else None
+            schema = {
+                'name': func_spec['name'],
+                'description': func_spec.get('description', ''),
+                'parameters': func_spec['parameters']
+            }
+        elif funcpath_or_obj is None:
             funcobj = funcpath_or_obj
             warnings.warn(f'No implementation provided for function: {getattr(funcobj, "name", "UNNAMED")}')
         elif isinstance(funcpath_or_obj, str):
-            funcpath = funcpath_or_obj
-            if '|' in funcpath:
-                # pyfunc is in the form 'path.to.module_to_import|path.to.function'
-                modpath, funcpath = funcpath.split('|')
-            else:
-                modpath, funcpath = funcpath.rsplit('.', 1)
-            modobj = importlib.import_module(modpath)
-            parent = modobj
-            for funcname in funcpath.split('.'):
-                parent = getattr(parent, funcname)
-            func = parent
-            assert callable(func)
-            funcobj = func
+            funcobj = handle_pyfunc(funcpath_or_obj)
         else:
             funcobj = funcpath_or_obj
 
         # Explicit schema overrides implicit
         if not schema:
-            # hasattr(funcpath_or_obj, 'schema')
             schema = getattr(funcobj, 'schema', None)
             if schema is None:
                 raise RuntimeError(f'No schema provided for tool function {funcobj}')
-            # assert schema['name'] = funcobj.name  # Do we care about this?
-        # print(f'{schema=}')
 
         self._tool_registry[schema['name']] = (funcobj, schema)
 
     @property
     def toolset(self):
-        return self._tool_registry.keys()
+        return {name: func for name, (func, _) in self._tool_registry.items()}
+        # return list(self._tool_registry.keys())
 
     def clear_tools(self):
         'Remove all tools from registry'
@@ -151,85 +150,99 @@ class mixin(model_runner_base):
         Check for this case, and return the bypass response, which is just the non-tool response the LLM
         opts to give
         '''
-        for tc in response['choices'][0].get('message', {}).get('tool_calls'):
-            if tc['function']['name'] in (TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME):
-                args = json.loads(tc['function']['arguments'])
+        for tc in response.tool_calls:
+            if tc.name in (TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME):
+                # args = json.loads(tc.arguments)
+                args = tc.arguments
                 direct_resp_text = args['response']
-                self.logger.debug(f'LLM chose to bypass function-calling witht he following response: {direct_resp_text}')
+                self.logger.debug(f'LLM chose to bypass function-calling with the following response: {direct_resp_text}')
                 # Reconstruct an OpenAI-style response
-                choice = response['choices'][0]
+                # choice = response['choices'][0]
+                choice = response.choices[0]
                 full_resp = {
                     'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': direct_resp_text},
                                  'finish_reason': choice['finish_reason']}],
                                  # Usage is going to be based on the tool-call original, but we probably want that,
                                  # because it was what's actually consumed
-                                 'usage': response['usage'], 'object': response['object'], 'id': response['id'],
-                                 'created': response['created'], 'model': response['model'], 'toolio.model_type':
-                                 response['toolio.model_type']}
+                                 'usage': response.usage, 'object': response.object, 'id': response.id,
+                                 'created': response.created, 'model': response.model, 'toolio.model_type':
+                                 response.model_type}
                 return full_resp
         return None
 
-    async def _execute_tool_calls(self, response, req_tools):
-        # print('update_tool_calls', response)
-        tool_responses = []
-        for tc in response['choices'][0].get('message', {}).get('tool_calls'):
-            call_id = tc['id']
-            callee_name = tc['function']['name']
-            if 'arguments' in tc['function']:
-                callee_args = json.loads(tc['function']['arguments'])
-            else:
-                callee_args = tc['function']['arguments_obj']
-            tool, _ = req_tools.get(callee_name, (None, None))
+# In case we want to use introspection to specify how we call functions
+# import inspect
+
+# def example_function(a, b, c=3, *args, d=4, **kwargs):
+#     pass
+
+# positional_count = 0
+# keyword_count = 0
+
+# sig = inspect.signature(example_function)
+# for param in sig.parameters.values():
+#     if param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):
+#         positional_count += 1
+#     if param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY):
+#         keyword_count += 1
+
+# print(f"Positional arguments: {positional_count}")
+# print(f"Keyword arguments: {keyword_count}")
+
+    async def _execute_tool_calls(self, tool_calls):
+        tool_results = []
+        for tc in tool_calls or []:
+            call_id = tc.id
+            tool, _ = self._tool_registry.get(tc.name, (None, None))
             if tool is None:
-                warnings.warn(f'Tool called, but it has no function implementation: {callee_name}')
+                warnings.warn(f'Tool called, but it has no function implementation: {tc.name}')
                 continue
-            if self.logger:
-                self.logger.debug(f'🔧 Calling tool {callee_name} with args {callee_args}')
+            self.logger.debug(f'🔧 Calling tool {tc.name} with args {tc.arguments}')
             # FIXME: Parallelize async calls rather than blocking on each
             is_callable, is_async_callable = check_callable(tool)
             try:
                 if is_async_callable:
-                    result = await tool(**callee_args)
+                    result = await tool(**tc.arguments)
                 elif is_callable:
-                    result = tool(**callee_args)
+                    result = tool(**tc.arguments)
             except TypeError as e:
                 # For special case where function takes exactly 1 argument, can just skip keyword form
-                if len(callee_args) == 1 and 'no keyword arguments' in str(e):
+                if len(tc.arguments) == 1 and 'no keyword arguments' in str(e):
                     if is_async_callable:
-                        result = await tool(next(iter(callee_args.values())))
+                        result = await tool(next(iter(tc.arguments.values())))
                     elif is_callable:
-                        result = tool(next(iter(callee_args.values())))
+                        result = tool(next(iter(tc.arguments.values())))
                 else:
                     raise
-            if self.logger:
-                self.logger.debug(f'✅ Tool call result: {result}')
+            self.logger.debug(f'✅ Tool call result: {result}')
+            tool_results.append((call_id, tc.name, tc.arguments, result))
+        return tool_results
 
-            tool_responses.append((call_id, callee_name, callee_args, result))
-            # print('Tool result:', result)
-            # self._pending_tool_calls[tc['id']] = (tool, callee_args)
-        return tool_responses
-
-    async def _handle_tool_responses(self, messages, response, req_tools, req_tool_spec=None):
-        """
-        Handle tool responses and update messages accordingly
+    async def _handle_tool_results(self, messages, results, req_tools, model_flags=None, remove_used_tools=True):
+        '''
+        Handle tool results and update messages accordingly
         
         Args:
             messages: Current message history
             response: Response from LLM containing tool calls
-            req_tools: Dictionary of available tools
-            req_tool_spec: Optional tool specifications (needed for continue message)
-        """
-        tool_responses = await self._execute_tool_calls(response, req_tools)
-
-        for call_id, callee_name, callee_args, result in tool_responses:
+            req_tools: List of available tools
+        '''
+        model_flags = model_flags or self.model_flags
+        called_names = []
+        for call_id, callee_name, callee_args, result in results:
             # print(model_type, model_flags, model_flags and model_flag.TOOL_RESPONSE in model_flags)
             set_tool_response(messages, call_id, callee_name, callee_args, str(result), 
                             model_flags=self.model_flags)
+            called_names.append(callee_name)
 
-        continue_msg = CM_TOOLS_LEFT if req_tool_spec else CM_NO_TOOLS_LEFT
-        set_continue_message(messages, continue_msg, model_flags=self.model_flags)
+        if remove_used_tools:
+            # req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
+            # req_tool_spec = [s for f, s in req_tools.values()]
+            req_tools = [t for t in req_tools if t not in called_names]
 
-        return [callee_name for call_id, callee_name, callee_args, result in tool_responses]
+        continue_msg = CM_TOOLS_LEFT if req_tools else CM_NO_TOOLS_LEFT
+        set_continue_message(messages, continue_msg, model_flags=model_flags)
+        return called_names
 
 
 def prep_tool(spec):
@@ -332,8 +345,8 @@ def process_tools_for_sysmsg(tools, internal_tools, separator='\n', **kwargs):
         no_tool_desc: description to use for the default get-out-of-jail model response
     '''
     # Start by normalizing away from Pydantic form
-    tools = [ (t.dictify() if isinstance(t, V1Function) else t) for t in tools ]
-    tools.extend(internal_tools)
+    normalized_tools = [(t.dictify() if isinstance(t, V1Function) else t) for t in tools]
+    combined_tools = normalized_tools + list(internal_tools)
     tool_schemas = [
         {
             'type': 'object',
@@ -345,13 +358,13 @@ def process_tools_for_sysmsg(tools, internal_tools, separator='\n', **kwargs):
             },
             'required': ['name', 'arguments'],
         }
-        for fn in tools
+        for fn in combined_tools
     ]
     # XXX: Do we need to differentiate prompt setup for 1 vs multiple tools?
     # if len(tool_schemas) - len(internal_tools) == 1:
     #     # Single tool provided (second is the no-tool escape)
     #     tool_str = separator.join(
-    #         [f'\nTool name: {tool["name"]}\n {tool["description"]}\nInvocation schema:\n{json.dumps(ts)}'
+    #         [f'\nTool name: {tool['name']}\n {tool['description']}\nInvocation schema:\n{json.dumps(ts)}'
     #             for tool, ts in zip(tools, tool_schemas) ])
     # else:
     #     # XXX: Use LANG['one_tool_prompt_schemalabel']
@@ -366,3 +379,210 @@ def process_tools_for_sysmsg(tools, internal_tools, separator='\n', **kwargs):
     sysprompt = PROMPT_FORMATTER.format_map(prompt_tpl(tool_spec=tool_str, **kwargs))
 
     return full_schema, tool_schemas, sysprompt
+
+
+@dataclass
+class tool_call:
+    '''Single tool invocation request from LLM'''
+    id: str
+    name: str
+    arguments: dict
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'tool_call':
+        return cls(
+            id=data['id'],
+            name=data['function']['name'],
+            arguments=json.loads(data['function']['arguments'])
+        )
+    
+    def to_dict(self) -> dict:
+        return {
+            'id': self.id,
+            'type': 'function',
+            'function': {
+                'name': self.name,
+                'arguments': json.dumps(self.arguments)
+            }
+        }
+
+
+def parse_genresp_tool_calls(text: str) -> list[tool_call] | None:
+    '''Parse tool calls from text if present'''
+    try:
+        # Only attempt tool call parsing if we have what looks like complete JSON
+        text = text.strip()
+        if text and text[-1] in [']', '}']:  # Wait for closing bracket/brace
+            try:
+                data = json.loads(text)
+                # Normalize to list
+                if not isinstance(data, list):
+                    data = [data]
+
+                tool_calls = []
+                for tc in data:
+                    if not ('name' in tc and 'arguments' in tc):
+                        break  # Not tool call format
+                    tool_calls.append(tool_call(
+                        id=f'call_{int(time.time_ns())}_{len(tool_calls)}',
+                        name=tc['name'],
+                        arguments=tc['arguments']
+                    ))
+                return tool_calls
+            except json.JSONDecodeError:
+                pass  # Not valid JSON yet
+    except Exception as e:
+        warnings.warn(f'Error parsing tool call JSON from LLM: {str(e)}')
+    return
+
+
+class tool_call_response_mixin:
+    '''
+    Specialized response type for handling tool-calling interactions.
+    Handles OpenAI-style function calling with MLX schema hooks.
+    Provides tool calling behavior for responses. No initialization needed
+    since all state is maintained in the llm_response dataclass.
+    '''
+    def finalize_tool_call(self):
+        '''
+        Called when a tool call sequence is complete to construct the final tool calls structure
+        '''
+        # if hasattr(self, 'accumulated_text'):
+        #     assert not getattr(self, '_accumulated_args', None)
+        #     self._first_choice_text = self.accumulated_text
+        #     return
+
+        if not hasattr(self, '_accumulated_args'):
+            return
+
+        # Convert accumulated arguments into final tool calls structure
+        tool_calls = []
+        for (index, name), args in self._accumulated_args.items():
+            tool_calls.append({
+                'id': f'call_{self.id}_{index}',
+                'type': 'function',
+                'function': {
+                    'name': name,
+                    'arguments': args
+                }
+            })
+
+        if tool_calls:
+            self.choices[0]['message']['tool_calls'] = tool_calls
+            self.choices[0]['finish_reason'] = 'tool_calls'
+            self.tool_calls = [
+                tool_call.from_dict(tc) for tc in tool_calls
+            ]
+
+        # Clean up tracking state
+        del self._accumulated_args
+        self.current_function_index = -1
+        self.current_function_name = None
+        self.in_function_arguments = False
+
+    @classmethod
+    def prepare_hooked_schemas(cls, tools: list[dict]) -> dict:
+        '''
+        Create JSON schema with hooks for tracking tool selection.
+        Based on ToolCallStreamingResponder logic.
+        '''
+        def set_function_name(instance, _prop_name: str, prop_value: str):
+            instance.current_function_index += 1
+            instance.current_function_name = prop_value
+
+        def start_function_arguments(instance, _prop_name: str):
+            instance.in_function_arguments = True
+
+        def end_function_arguments(instance, _prop_name: str, _prop_value: str):
+            instance.in_function_arguments = False
+
+        hooked_function_schemas = [
+            {
+                'type': 'object',
+                'properties': {
+                    'name': {
+                        'type': 'const',
+                        'const': fn['name'],
+                        '__hooks': {
+                            'value_end': set_function_name,
+                        },
+                    },
+                    'arguments': {
+                        **fn['parameters'],
+                        '__hooks': {
+                            'value_start': start_function_arguments,
+                            'value_end': end_function_arguments,
+                        },
+                    },
+                },
+                'required': ['name', 'arguments'],
+            }
+            for fn in tools
+        ]
+
+        if len(hooked_function_schemas) == 1:
+            schema = hooked_function_schemas[0]
+        else:
+            schema = {
+                'type': 'array',
+                'items': {'anyOf': hooked_function_schemas},
+            }
+
+        return schema
+
+    def update_from_streaming(self, text: str) -> dict | None:
+        '''
+        Process streaming text during tool call.
+        Returns a message dict if text should be emitted.
+        '''
+        if not self.in_function_arguments:
+            return None
+
+        assert self.current_function_name is not None
+        
+        return {
+            'choices': [{
+                'index': 0,
+                'delta': {
+                    'tool_calls': [{
+                        'index': self.current_function_index,
+                        'id': f'call_{self.id}_{self.current_function_index}',
+                        'type': 'function',
+                        'function': {
+                            'name': self.current_function_name,
+                            'arguments': text,
+                        },
+                    }]
+                },
+                'finish_reason': None
+            }],
+            'object': 'chat.completion.chunk',
+            'id': self.id,
+            'created': self.created,
+            'model': self.model
+        }
+
+    @property
+    def first_tool_call(self) -> tool_call | None:
+        '''Get the first tool call if any'''
+        return self.tool_calls[0] if self.tool_calls else None
+
+    @property
+    def first_tool_result(self) -> any:
+        '''Get the first tool result if any'''
+        return self.tool_results[0] if self.tool_results else None
+
+
+def handle_pyfunc(pyfunc):
+    if '|' in pyfunc:
+        # pyfunc is in the form 'path.to.module_to_import|path.to.function'
+        modpath, funcpath = pyfunc.split('|')
+    else:
+        modpath, funcpath = pyfunc.rsplit('.', 1)
+    modobj = importlib.import_module(modpath)
+    parent = modobj
+    for funcname in funcpath.split('.'):
+        parent = getattr(parent, funcname)
+    func = parent
+    assert callable(func)
+    return func

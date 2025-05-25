@@ -94,3 +94,4 @@ class V1ChatCompletionsRequest(BaseModel):
     stream: bool = False
     stream_options: V1StreamOptions = None
     sysmsg_leadin: str | None = None
+    max_trips: int = 3
