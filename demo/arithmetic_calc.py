@@ -42,7 +42,8 @@ async def arithmetic_calc(num1=0, num2=0, op=None):
     return result
 
 
-MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
+# MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
+MLX_MODEL_PATH = 'mlx-community/Llama-3.2-3B-Instruct-4bit'
 
 toolio_mm = local_model_runner(MLX_MODEL_PATH, tool_reg=[arithmetic_calc])
 

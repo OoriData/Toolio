@@ -61,10 +61,10 @@ python -c "import platform; assert 'arm64' in platform.platform()"
 Use `toolio_server` to host MLX-format LLMs for structured output query or function-calling. For example you can host the MLX version of Nous Research's Hermes-2 Θ (Theta).
 
 ```sh
-toolio_server --model=mlx-community/Hermes-2-Theta-Llama-3-8B-4bit
+toolio_server --model=mlx-community/Llama-3.2-3B-Instruct-4bit
 ```
 
-This will download the model from the HuggingFace path `mlx-community/Hermes-2-Theta-Llama-3-8B-4bit` to your local disk cache. The `4bit` at the end means you are downloading a version quantized to 4 bits, so that each parameter in the neural network, which would normally take up 16 bits, only takes up 4, in order to save memory and boost speed. There are 8 billion parameters, so this version will take up a little over 4GB on your disk, and running it will take up about the sama amount of your unified RAM.
+This will download the model from the HuggingFace path `mlx-community/Llama-3.2-3B-Instruct-4bit` to your local disk cache. The `4bit` at the end means you are downloading a version quantized to 4 bits, so that each parameter in the neural network, which would normally take up 16 bits, only takes up 4, in order to save memory and boost speed. There are 8 billion parameters, so this version will take up a little over 4GB on your disk, and running it will take up about the sama amount of your unified RAM.
 
 To learn more about the MLX framework for ML workloads (including LLMs) on Apple Silicon, see the [MLX Notes](https://github.com/uogbuji/mlx-notes) article series. The "Day One" article provides all the context you need for using local LLMs with Toolio.
 
@@ -225,7 +225,7 @@ toolio_request --apibase="http://localhost:8000" --tool=toolio.tool.math.calcula
 --prompt='Usain Bolt ran the 100m race in 9.58s. What was his average velocity?'
 ```
 
-Here's what I got from `Hermes-2-Theta-Llama-3-8B-4bit`:
+Here's what I got from `Llama-3.2-3B-Instruct-4bit`:
 
 ```
 DEBUG:toolio.cli.request:🔧 Calling tool calculator with args {'expr': '(100/9.58)'}
@@ -334,7 +334,7 @@ You can also, of course, just load the model and run inference on it without bot
 import asyncio
 from toolio.llm_helper import local_model_runner
 
-toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+toolio_mm = local_model_runner('mlx-community/Llama-3.2-3B-Instruct-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
@@ -357,7 +357,7 @@ Toolio uses OpenAI API conventions a lot under the hood. If you run the followin
 import asyncio
 from toolio.llm_helper import local_model_runner
 
-toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+toolio_mm = local_model_runner('mlx-community/Llama-3.2-3B-Instruct-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
@@ -373,7 +373,7 @@ asyncio.run(say_hello(toolio_mm))
 You should see something like:
 
 ```py
-llm_response(response_type=<llm_response_type.MESSAGE: 1>, choices=[{'index': 0, 'delta': {'role': 'assistant', 'content': 'Hello'}, 'finish_reason': None}], usage={'prompt_tokens': 15, 'completion_tokens': 1, 'total_tokens': 16}, object='chat.completion', id='cmpl-1737387910', created=1737387910, model='mlx-community/Hermes-2-Theta-Llama-3-8B-4bit', model_type='llama', _first_choice_text=None)
+llm_response(response_type=<llm_response_type.MESSAGE: 1>, choices=[{'index': 0, 'delta': {'role': 'assistant', 'content': 'Hello'}, 'finish_reason': None}], usage={'prompt_tokens': 15, 'completion_tokens': 1, 'total_tokens': 16}, object='chat.completion', id='cmpl-1737387910', created=1737387910, model='mlx-community/Llama-3.2-3B-Instruct-4bit', model_type='llama', _first_choice_text=None)
 Hello
 ```
 
@@ -384,7 +384,7 @@ The LLM response is delivered in such structures ("deltas") as they're generated
 The final chunk would look something like this:
 
 ```py
-{'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': 'stop'}], 'usage': {'completion_tokens': 20, 'prompt_tokens': 12, 'total_tokens': 32}, 'object': 'chat.completion.chunk', 'id': 'chatcmpl-18503717840_1721824385', 'created': 1721824385, 'model': 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'}
+{'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': 'stop'}], 'usage': {'completion_tokens': 20, 'prompt_tokens': 12, 'total_tokens': 32}, 'object': 'chat.completion.chunk', 'id': 'chatcmpl-18503717840_1721824385', 'created': 1721824385, 'model': 'mlx-community/Llama-3.2-3B-Instruct-4bit'}
 ```
 
 Notice there is more information, now that it's finished (`'finish_reason': 'stop'`). Say you want the metadata such as the number of tokens generated:
@@ -393,7 +393,7 @@ Notice there is more information, now that it's finished (`'finish_reason': 'sto
 import asyncio
 from toolio.llm_helper import local_model_runner
 
-toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+toolio_mm = local_model_runner('mlx-community/Llama-3.2-3B-Instruct-4bit')
 
 async def say_hello(tmm):
     msgs = [{"role": "user", "content": "Hello! How are you?"}]
@@ -426,7 +426,7 @@ As mentioned, you can specify tools and schemata.
 import asyncio
 from toolio.llm_helper import local_model_runner
 
-toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+toolio_mm = local_model_runner('mlx-community/Llama-3.2-3B-Instruct-4bit')
 
 async def extractor(tmm):
     prompt = ('Which countries are mentioned in the sentence \'Adamma went home to Nigeria for the hols\'?'
@@ -463,7 +463,7 @@ SQUARE_ROOT_METADATA = {'name': 'square_root', 'description': 'Get the square ro
                                 'square': {'type': 'number',
                                 'description': 'Number from which to find the square root'}},
                             'required': ['square']}}
-toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit',
+toolio_mm = local_model_runner('mlx-community/Llama-3.2-3B-Instruct-4bit',
                           tool_reg=[(sqrt, SQUARE_ROOT_METADATA)])
 
 

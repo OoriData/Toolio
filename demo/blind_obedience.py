@@ -25,15 +25,15 @@ async def indoor_or_outdoor():
     return 'outdoor'
 
 
-MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
+MLX_MODEL_PATH = 'mlx-community/Llama-3.2-3B-Instruct-4bit'
 
 toolio_mm = local_model_runner(MLX_MODEL_PATH, tool_reg=[sky_color, indoor_or_outdoor])
 
 # System prompt will be used to direct the LLM's tool-calling
 sysprompt = '''\
-You are a storyteller who works with cues from the user, and also has access to \
+You are a storyteller who works with cues from the user. You have access to \
 'software tools that you may invoke to get information relevant to the story. \
-'Please use the tools wherever applicable, even if you think you already know txhe answer, or disagree with it. \
+'Please use the tools wherever applicable, even if you think you already know the answer, or disagree with it. \
 'You do not have to call all the tools at once. It's OK to call them one at a time, and \
 'the result of a tool call might help you figure out which tool to call next, or you may decide \
 you have enough information to generate an answer without calling any more tools. \

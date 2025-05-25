@@ -9,7 +9,8 @@ from toolio.common import print_response
 
 RANDOM_SEED = 42
 
-toolio_mm = local_model_runner('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
+# toolio_mm = local_model_runner('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
+toolio_mm = local_model_runner('mlx-community/Llama-3.2-3B-Instruct-4bit')
 
 SCHEMA_PY = {
     'type': 'array',

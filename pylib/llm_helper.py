@@ -242,7 +242,7 @@ class local_model_runner(model_manager):
     Simplified async interface for MLX model completions.
 
     Example:
-        runner = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
+        runner = local_model_runner('mlx-community/Llama-3.2-3B-Instruct-4bit')
         resp = await runner('What is 2 + 2?')
         # Or with tools:
         resp = await runner('What is 2 + 2?', tools=['calculator'])

@@ -38,8 +38,8 @@ SCHEMA = '''\
 }
 '''
 
-# toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
-toolio_mm = local_model_runner('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
+# toolio_mm = local_model_runner('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
+toolio_mm = local_model_runner('mlx-community/Llama-3.2-3B-Instruct-4bit')
 
 async def tutor_main(tmm):
     prompt = ('solve 8x + 31 = 2. Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#')
