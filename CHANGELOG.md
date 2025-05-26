@@ -7,6 +7,25 @@ Notable changes to  Format based on [Keep a Changelog](https://keepachangelog.co
 
 -->
 
+## [0.6.0] - 20250526
+
+### Changed
+
+- Major overall refactoring
+  - reorganize tool-calling logic, including in the `toolcall_mixin` class and `toolio.toolcall` nodule overall
+    - New main entry class `toolio.local_model_runner` also has cleaned up iterative vs one-shot & tool-calling vs regular completion methods
+  - Direct use of newer `mlx_lm` facilities such as `mlx_lm.sample_utils.make_sampler`, `mlx.generate_step_with_schema`, `mlx_lm.utils.GenerationResponse`, `mlx_lm.utils.stream_generate` and additions to `logits_processors`
+    - See e.g. `llm_helper.Model.completion` & `llm_helper.Model.make_logit_bias_processor`. Logits bias via registered processors is now how we do the schema steering
+  - vendored in `llm_structured_output` into Toolio (`toolio.vendor.llm_structured_output`)
+  - Modularize handling of completion responses in its various forms (low-level Toolio, low-level mlx_lm, OpenAI-compatible) into `toolio.response_helper`
+- Mechanism for JSON schema injection into prompts. See, for example `toolio.common.DEFAULT_JSON_SCHEMA_CUTOUT` & `toolio.common.replace_cutout`
+- Accommodation of upstream changes & improved package installation logic
+
+### Added
+
+- `toolio.local_model_runner`, a new main encapsulation for running model as local MLX workloads
+- Lots of other bits related to the major changes summarized above 
+
 ## [0.5.2] - 20241209
 
 ### Added

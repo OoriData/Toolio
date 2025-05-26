@@ -16,88 +16,101 @@ async def test_model_manager_completion(mock_model):
     Test the iter_complete method from model_manager by simulating
     a model.completion that yields two GenerationResponse objects
     '''
+    # Setup test session with initial message
+    test_messages = [{'role': 'user', 'content': 'Test prompt'}]
+    expected_response = 'Test response'
+
     mm = model_manager('test_path')
-    # mock_model.completion.return_value = iter([
-    #     {'op': 'evaluatedPrompt', 'token_count': 2},
-    #     {'op': 'generatedTokens', 'text': 'Test response'},
-    #     {'op': 'stop', 'reason': 'end', 'token_count': 3}
-    # ])
 
-    # Mock completion to return GenerationResponse objects
-    gr1 = MagicMock()
-    gr1.text = 'Test response'
-    gr1.finish_reason = None
+    # First completion sequence - initial response
+    gr_start = MagicMock()
+    gr_start.text = expected_response
+    gr_start.finish_reason = None
+    gr_start.prompt_tokens = 10
+    gr_start.generation_tokens = 5
 
-    gr2 = MagicMock()
-    gr2.text = ''  # Empty chunk signals the finish
-    gr2.finish_reason = 'stop'
+    # Second completion sequence - end signal
+    gr_end = MagicMock()
+    gr_end.text = ''  # Empty chunk signals the finish
+    gr_end.finish_reason = 'stop'
+    gr_end.prompt_tokens = 10
+    gr_end.generation_tokens = 5
 
-    def fake_completion(*args, **kwargs):
-        yield gr1
-        yield gr2
+    # Set up the mock to return our streaming sequence
+    mock_model.completion.side_effect = [iter([gr_start, gr_end])]
 
-    # Assign gen/iterator via side_effect
-    mock_model.completion.side_effect = fake_completion
-
+    # Execute the completion flow
     result = []
-    async for chunk in mm.iter_complete(
-        [{'role': 'user', 'content': 'Test prompt'}], full_response=True
-    ):
+    async for chunk in mm.iter_complete(test_messages, full_response=True):
         result.append(chunk.to_dict())
 
+    # Verify the response structure
     assert len(result) == 2
-
-    assert result[0]['choices'][0]['delta']['content'] == 'Test response'
+    assert result[0]['choices'][0]['delta']['content'] == expected_response
     assert result[1]['choices'][0]['finish_reason'] == 'stop'
 
-    # Repeat scenario to ensure consistent behavior.
+    # Verify the mock was called correctly
+    assert mock_model.completion.call_count == 1
+    call_args = mock_model.completion.call_args_list[0][0]
+    assert call_args[0] == test_messages  # Verify messages were passed correctly
+
+    # Repeat scenario to ensure consistent behavior
     mm = model_manager('test_path')
-    mock_model.completion.side_effect = fake_completion
+    mock_model.completion.side_effect = [iter([gr_start, gr_end])]
 
     result = []
-    async for chunk in mm.iter_complete(
-        [{'role': 'user', 'content': 'Test prompt'}],
-        full_response=True
-    ):
+    async for chunk in mm.iter_complete(test_messages, full_response=True):
         result.append(chunk.to_dict())
 
     assert len(result) == 2
-    assert result[0]['choices'][0]['delta']['content'] == 'Test response'
+    assert result[0]['choices'][0]['delta']['content'] == expected_response
     assert result[1]['choices'][0]['finish_reason'] == 'stop'
 
 @pytest.mark.asyncio
 async def test_basic_completion(mock_model, session_cls):
     '''Test basic completion without tools or schema'''
-    # mock_model.completion.return_value = iter([
-    #     {'op': 'evaluatedPrompt', 'token_count': 10},
-    #     {'op': 'generatedTokens', 'text': 'This is a test response'},
-    #     {'op': 'stop', 'reason': 'end', 'token_count': 5}
-    # ])
-
+    # Setup test session with initial message
     test_session = session_cls(
         label='Basic completion',
         req_messages=[{'role': 'user', 'content': 'Hello world'}],
-        resp_json=None,  # Not needed for local model
-        resp_text='This is a test response'
+        resp_text='This is a test response',
+        resp_json=None
     )
 
     mm = model_manager('test/path')
-    gr1 = MagicMock()
-    gr1.text = 'This is a test response'
-    gr1.finish_reason = None
 
-    gr2 = MagicMock()
-    gr2.text = ''  # An empty string signals that generation is done
-    gr2.finish_reason = 'end'
+    # First completion sequence - initial response
+    gr_start = MagicMock()
+    gr_start.text = test_session.resp_text
+    gr_start.finish_reason = None
+    gr_start.prompt_tokens = 10
+    gr_start.generation_tokens = 5
 
-    mock_model.completion.return_value = iter([gr1, gr2])
+    # Second completion sequence - end signal
+    gr_end = MagicMock()
+    gr_end.text = ''  # Empty string signals that generation is done
+    gr_end.finish_reason = 'end'
+    gr_end.prompt_tokens = 10
+    gr_end.generation_tokens = 5
 
+    # Set up the mock to return our streaming sequence
+    mock_model.completion.return_value = iter([gr_start, gr_end])
+
+    # Execute the completion flow
     result = await mm.complete(test_session.req_messages)
+
+    # Verify the response
     assert result == test_session.resp_text
+
+    # Verify the mock was called correctly
+    assert mock_model.completion.call_count == 1
+    call_args = mock_model.completion.call_args_list[0][0]
+    assert call_args[0] == test_session.req_messages  # Verify messages were passed correctly
 
 @pytest.mark.asyncio
 async def test_completion_with_schema(mock_model, session_cls):
     '''Test completion with JSON schema constraint'''
+    # Setup test schema and expected response
     test_schema = {
         'type': 'object',
         'properties': {
@@ -105,34 +118,52 @@ async def test_completion_with_schema(mock_model, session_cls):
             'age': {'type': 'number'}
         }
     }
+    expected_response = '{"name": "John", "age": 30}'
 
-    # mock_model.completion.return_value = iter([
-    #     {'op': 'evaluatedPrompt', 'token_count': 15},
-    #     {'op': 'generatedTokens', 'text': '{"name": "John", "age": 30}'},
-    #     {'op': 'stop', 'reason': 'end', 'token_count': 8}
-    # ])
-
+    # Setup test session
     test_session = session_cls(
         label='Schema-constrained completion',
         req_messages=[{'role': 'user', 'content': 'Tell me about a person'}],
         req_schema=test_schema,
-        resp_text='{"name": "John", "age": 30}',
-        resp_json=None  # Not needed for local model
+        resp_text=expected_response,
+        resp_json=None
     )
 
     mm = model_manager('test/path')
-    gr1 = MagicMock()
-    gr1.text = '{"name": "John", "age": 30}'
-    gr1.finish_reason = None
 
-    gr2 = MagicMock()
-    gr2.text = ''
-    gr2.finish_reason = 'end'
+    # First completion sequence - schema-constrained response
+    gr_start = MagicMock()
+    gr_start.text = expected_response
+    gr_start.finish_reason = None
+    gr_start.prompt_tokens = 15
+    gr_start.generation_tokens = 8
 
-    mock_model.completion.return_value = iter([gr1, gr2])
+    # Second completion sequence - end signal
+    gr_end = MagicMock()
+    gr_end.text = ''
+    gr_end.finish_reason = 'end'
+    gr_end.prompt_tokens = 15
+    gr_end.generation_tokens = 8
 
+    # Set up the mock to return our streaming sequence
+    mock_model.completion.return_value = iter([gr_start, gr_end])
+
+    # Execute the completion flow with schema
     result = await mm.complete(test_session.req_messages, json_schema=test_schema)
-    assert json.loads(result) == json.loads(test_session.resp_text)
+
+    # Verify the response
+    assert json.loads(result) == json.loads(expected_response)
+
+    # Verify the mock was called correctly
+    assert mock_model.completion.call_count == 1
+    call_args = mock_model.completion.call_args_list[0][0]
+    call_kwargs = mock_model.completion.call_args_list[0][1]
+
+    # Verify messages were passed correctly and schema was appended
+    assert len(call_args[0]) == 1  # Should only have one message
+    assert 'Tell me about a person' in call_args[0][0]['content']  # Original message content
+    assert json.dumps(test_schema) in call_args[0][0]['content']  # Schema should be appended
+    assert 'cache_prompt' in call_kwargs  # Verify other kwargs are present
 
 @pytest.mark.asyncio
 async def test_tool_calling_flow(mock_model, session_cls, sample_tool):
@@ -220,41 +251,56 @@ async def test_tool_calling_flow(mock_model, session_cls, sample_tool):
 @pytest.mark.asyncio
 async def test_model_flags_handling(mock_model, session_cls):
     '''Test handling of different model flags'''
+    # Setup test model type and expected response
     mock_model.model.model_type = 'llama'  # Model type that uses NO_SYSTEM_ROLE
-    # mock_model.completion.return_value = iter([
-    #     {'op': 'evaluatedPrompt', 'token_count': 10},
-    #     {'op': 'generatedTokens', 'text': 'Response with no system role'},
-    #     {'op': 'stop', 'reason': 'end', 'token_count': 5}
-    # ])
+    expected_response = 'Response with no system role'
 
+    # Setup test session with system message
     test_session = session_cls(
         label='Model flags test',
         req_messages=[
             {'role': 'system', 'content': 'System prompt'},
             {'role': 'user', 'content': 'Test message'}
         ],
-        resp_text='Response with no system role',
+        resp_text=expected_response,
         resp_json=None
     )
 
     mm = model_manager('test/path')
-    gr_flag = MagicMock()
-    gr_flag.text = 'Response with no system role'
-    gr_flag.finish_reason = None
 
-    gr_flag_end = MagicMock()
-    gr_flag_end.text = ''
-    gr_flag_end.finish_reason = 'end'
+    # First completion sequence - initial response
+    gr_start = MagicMock()
+    gr_start.text = expected_response
+    gr_start.finish_reason = None
+    gr_start.prompt_tokens = 15
+    gr_start.generation_tokens = 8
 
-    mock_model.completion.return_value = iter([gr_flag, gr_flag_end])
+    # Second completion sequence - end signal
+    gr_end = MagicMock()
+    gr_end.text = ''
+    gr_end.finish_reason = 'end'
+    gr_end.prompt_tokens = 15
+    gr_end.generation_tokens = 8
 
-    # Model type 'llama' should trigger NO_SYSTEM_ROLE behavior
+    # Set up the mock to return our streaming sequence
+    mock_model.completion.return_value = iter([gr_start, gr_end])
+
+    # Execute the completion flow
     result = await mm.complete(test_session.req_messages)
-    # Verify the system message was handled appropriately
-    assert result == test_session.resp_text
 
-    # We might want to add more specific assertions about how the messages
-    # were processed based on the model flags
+    # Verify the response
+    assert result == expected_response
+
+    # Verify the mock was called correctly
+    assert mock_model.completion.call_count == 1
+    call_args = mock_model.completion.call_args_list[0][0]
+
+    # Verify both messages were passed through
+    assert len(call_args[0]) == 2  # Both system and user messages should be present
+    assert call_args[0][0]['role'] == 'system'  # First message should be system
+    assert call_args[0][0]['content'] == 'System prompt'  # Verify system message content
+    assert call_args[0][1]['role'] == 'user'  # Second message should be user
+    assert call_args[0][1]['content'] == 'Test message'  # Verify user message content
 
 @pytest.mark.asyncio
 async def test_max_trips_enforcement(mock_model, session_cls, sample_tool, caplog):

@@ -1,7 +1,5 @@
 Practical notes
 
-# Managing the models cache
-
 # Offline operation
 
 Many users of Toolio will be referencing HuggingFace paths to models, especially in the [HF MLX community](). By defsult whenever you reference a model in this way it is downloaded and cached on your drive, so you needn't download it again in future, unless it changes upstream (theer's a new checkpoint).
@@ -34,17 +32,23 @@ toolio_server --model="/Users/username/.cache/huggingface/hub/models--mlx-commun
 
 Loading in this way will avoid any attempts to connect to the internet.
 
-### Deleting models
+# Managing the models cache
 
-BTW, you can also use `mlx_lm.manage` to clean up models you're no longer using. For example:
+## Deleting models
+
+You can also use `mlx_lm.manage` to clean up models you're no longer using. For example:
 
 ```sh
 mlx_lm.manage --delete --pattern "UnneededModel"
 ```
 
+## Sharing downloads with LM Studio
+
+[LM Studio](https://lmstudio.ai/), the popular, local AI toolkit supports MLX model weights, but downloads them to a different place from the Hugging Face cache used by the MLX default config. [lmstudio_hf](https://github.com/ivanfioravanti/lmstudio_hf) is a command-line utility to manage such downloads, and avoid duplicates.
+
 ## Saving a pretrained model
 
-If you'd ratehr have a location of your choice, avoid the hash-based names, etc., you can use…
+If you'd rather have a location of your choice, avoid the hash-based names, etc., you can use…
 
 ## Further exploration
 
