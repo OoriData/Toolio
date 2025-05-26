@@ -48,11 +48,11 @@ import markdown
 from joblib import Memory, expires_after
 
 from utiloori.ansi_color import ansi_color
-from ogbujipt.llm_wrapper import openai_chat_api, prompt_to_chat
+from ogbujipt.llm_wrapper import openai_chat_api  # , prompt_to_chat
 
 # from toolio.tool import tool
 from toolio.llm_helper import local_model_runner
-from toolio.common import response_text
+# from toolio.common import response_text
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Shut up Tokenizers lib warning
 
@@ -90,6 +90,7 @@ USER_AGENT = 'Python:Arkestra Agent:v0.1.0 (by u/CodeGriot'
 
 MAX_SUBREDDITS = 3
 
+# pylint: disable=line-too-long
 AGENT_1_SCHEMA = '''\
 {
   "type": "object",
@@ -180,7 +181,7 @@ async def console_throbber(frame_time: float=0.15):
 async def gather_reddit(topics, all_subreddits):
     # Type maniac linters get on my nerves 🤬
     msgs = [ {'role': 'system', 'content': agent_2_sysprompt},
-             {'role': 'user', 'content': agent_2_uprompt.format(topics='\n* '.join(topics), subreddits=all_subreddits)} ]  # pyright: ignore[reportCallIssue, reportArgumentType] noqa: 501
+             {'role': 'user', 'content': agent_2_uprompt.format(topics='\n* '.join(topics), subreddits=all_subreddits)} ]  # pyright: ignore[reportCallIssue, reportArgumentType] # pylint: disable=line-too-long
     resp = await toolio_mm.complete(msgs, json_schema=AGENT_2_SCHEMA, max_tokens=2048)
     subreddits = json.loads(resp)
     subreddits = subreddits[:MAX_SUBREDDITS]
@@ -226,7 +227,8 @@ async def async_main():
         question = resp.get('question')
         ready = resp.get('ready')
         if question and ready:
-            warnings.warn(f'The LLM got a bit confused and returned a question and a ready list, but we\'ll just use the latter: {resp}')
+            warnings.warn('The LLM got a bit confused and returned a question and a ready list, '
+                          f'but we\'ll just use the latter: {resp}')
         if ready:
             interview_finished = True
         elif question:

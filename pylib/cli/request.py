@@ -4,7 +4,7 @@
 '''
 Toolio client convenient CLI tool
 '''
-import sys
+# import sys
 import json
 import asyncio
 import logging
@@ -17,8 +17,8 @@ from toolio.client import struct_mlx_chat_api, cmdline_tools_struct
 
 # List of known loggers with too much chatter at debug level
 TAME_LOGGERS = ['asyncio', 'httpcore', 'httpx']
-for l in TAME_LOGGERS:
-    logging.getLogger(l).setLevel(logging.WARNING)
+for tl in TAME_LOGGERS:
+    logging.getLogger(tl).setLevel(logging.WARNING)
 
 # Note: above explicit list is a better idea than some sort of blanket approach such as the following:
 # for handler in logging.root.handlers:
@@ -34,23 +34,23 @@ for l in TAME_LOGGERS:
 @click.option('--prompt-file', type=click.File('r'),
     help='Prompt text; can use {jsonschema} placeholder for the schema. Overrides --prompt arg')
 @click.option('--schema',
-    help='JSON schema to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt')
+    help='JSON schema to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt')  # noqa E501
 @click.option('--schema-file', type=click.File('rb'),
-    help='Path to JSON schema to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt. Overrides --schema arg')
+    help='Path to JSON schema to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt. Overrides --schema arg')  # noqa E501
 # @click.option('--schema',
-#     help='JSON schema to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt')
+#     help='JSON schema to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt')  # noqa E501
 # @click.option('--schema-file',
-#     help='Path to JSON schema to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt. Overrides --schema arg')
+#     help='Path to JSON schema to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt. Overrides --schema arg')  # noqa E501
 @click.option('--tools',
-    help='Tools specification, based on OpenAI format, to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt')
+    help='Tools specification, based on OpenAI format, to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt')  # noqa E501
 @click.option('--tools-file', type=click.File('rb'),
-    help='Path to tools specification based on OpenAI format, to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt. Overrides --tools arg')
+    help='Path to tools specification based on OpenAI format, to be sent along in prompt to constrain the response. Also interpolated into {jsonschema} placeholder in the prompt. Overrides --tools arg')  # noqa E501
 @click.option('--sysprompt', help='Optional system prompt')
 @click.option('--max-trips', default=3, type=int,
-    help='Maximum number of times to return to the LLM, presumably with tool results. If there is no final response by the time this is reached, post a message with the remaining unused tool invocations')
-@click.option("--max-tokens", type=int, default=1024, help='Maximum number of tokens to generate. Will be applied to each trip')
+    help='Maximum number of times to return to the LLM, presumably with tool results. If there is no final response by the time this is reached, post a message with the remaining unused tool invocations')  # noqa E501
+@click.option("--max-tokens", type=int, default=1024, help='Maximum number of tokens to generate. Will be applied to each trip')  # noqa E501
 
-@click.option('--tool', '-t', multiple=True, help='Full Python attribute path to a Toolio-specific callable to be made available to the LLM')
+@click.option('--tool', '-t', multiple=True, help='Full Python attribute path to a Toolio-specific callable to be made available to the LLM')  # noqa E501
 
 @click.option('--temp', default=0.1, type=float, help='LLM sampling temperature')
 

@@ -12,13 +12,13 @@ import jinja2
 from fastapi import status
 from fastapi.responses import JSONResponse
 
-from mlx_lm.sample_utils import make_sampler
+# from mlx_lm.sample_utils import make_sampler
 
-from toolio.vendor.llm_structured_output.util.output import info, debug
+from toolio.vendor.llm_structured_output.util.output import debug  # , info
 from toolio.common import prompt_handler
-from toolio.toolcall import DEFAULT_INTERNAL_TOOLS, process_tools_for_sysmsg
+# from toolio.toolcall import DEFAULT_INTERNAL_TOOLS, process_tools_for_sysmsg
 from toolio.http_schematics import V1ChatMessage, V1ChatCompletionsRequest, V1ResponseFormatType
-from toolio.response_helper import llm_response, llm_response_type
+# from toolio.response_helper import llm_response, llm_response_type
 
 async def post_v1_chat_completions_impl(state, req_data: V1ChatCompletionsRequest):
     '''
@@ -49,7 +49,9 @@ async def post_v1_chat_completions_impl(state, req_data: V1ChatCompletionsReques
     schema = None
     if req_data.response_format:
         if tools:
-            warnings.warn('JSON schema-directed generation not supported in combination with tool-calling. Schema spec will be ignored.', stacklevel=2)
+            warnings.warn(
+                'JSON schema-directed generation not supported in combination with tool-calling. '
+                'Schema spec will be ignored.', stacklevel=2)
 
         assert req_data.response_format.type == V1ResponseFormatType.JSON_OBJECT
         # req_data may specify a JSON schema (this option is not in the OpenAI API)

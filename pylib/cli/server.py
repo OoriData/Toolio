@@ -27,7 +27,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse  # , StreamingResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 import click
@@ -36,16 +36,16 @@ import uvicorn
 from toolio.vendor.llm_structured_output.util.output import info, warning, debug
 
 from toolio.http_schematics import V1ChatCompletionsRequest
-from toolio.common import DEFAULT_FLAGS, FLAGS_LOOKUP
-from toolio.schema_helper import Model
+# from toolio.common import DEFAULT_FLAGS, FLAGS_LOOKUP
+# from toolio.schema_helper import Model
 from toolio.llm_helper import local_model_runner
 from toolio.http_impl import post_v1_chat_completions_impl
 
 
 # List of known loggers with too much chatter at debug level
 TAME_LOGGERS = ['asyncio', 'httpcore', 'httpx']
-for l in TAME_LOGGERS:
-    logging.getLogger(l).setLevel(logging.WARNING)
+for tl in TAME_LOGGERS:
+    logging.getLogger(tl).setLevel(logging.WARNING)
 
 # Note: above explicit list is a better idea than some sort of blanket approach such as the following:
 # for handler in logging.root.handlers:

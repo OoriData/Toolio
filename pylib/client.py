@@ -19,9 +19,9 @@ from amara3 import iri
 from ogbujipt import config
 from toolio.common import DEFAULT_JSON_SCHEMA_CUTOUT
 from toolio.toolcall import (
-    mixin as toolcall_mixin, process_tools_for_sysmsg, handle_pyfunc,
-    TOOL_CHOICE_NONE, TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS,
-    TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME, CM_TOOLS_LEFT, CM_NO_TOOLS_LEFT)
+    mixin as toolcall_mixin,  # process_tools_for_sysmsg, handle_pyfunc,
+    TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS,  # TOOL_CHOICE_NONE,
+    TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME)  # , CM_TOOLS_LEFT, CM_NO_TOOLS_LEFT)
 from toolio.response_helper import llm_response
 from toolio.common import model_flag
 
@@ -94,9 +94,18 @@ class struct_mlx_chat_api(toolcall_mixin):
         resp = await self._http_trip(req, req_data, trip_timeout, apikey, **kwargs)
         return resp if full_response else llm_response.from_openai_chat(resp).first_choice_text
 
-    async def complete_with_tools(self, messages, req='chat/completions', tools=None, tool_choice='auto', max_trips=3, sysprompt=None,
-                       apikey=None, trip_timeout=90.0, max_tokens=1024, temperature=0.1, **kwargs):
+    async def complete_with_tools(
+            self, messages, req='chat/completions', tools=None, tool_choice='auto', max_trips=3,
+            sysprompt=None, apikey=None, trip_timeout=90.0, max_tokens=1024, temperature=0.1, **kwargs
+            ):
         '''
+        Complete a prompt with tools, optionally using schema constraints
+
+        Args:
+            messages (list): List of messages to send to the LLM
+            req (str): HTTP request path
+            tools (list): List of tools to use
+            tool_choice (str): Tool choice mode
         '''
         req = req.strip('/')
 
@@ -112,7 +121,8 @@ class struct_mlx_chat_api(toolcall_mixin):
             # schema is a dict with description, name, and parameters
             req_tools = [{'type': 'function', 'function': t[1]} for t in self._resolve_tools(tools).values()]
             if tools:
-                req_data = {'messages': messages, 'tools': req_tools, 'tool_choice': tool_choice, 'temperature': temperature, **kwargs}
+                req_data = {'messages': messages, 'tools': req_tools, 'tool_choice': tool_choice,
+                            'temperature': temperature, **kwargs}
                 # Remove full_response from kwargs before passing to _http_trip
                 req_data.pop('full_response', None)
             else:
@@ -131,7 +141,8 @@ class struct_mlx_chat_api(toolcall_mixin):
                 resp = llm_response.from_openai_chat(resp)
                 model_flags = model_flag(resp.model_flags)
                 results = await self._execute_tool_calls(resp.tool_calls)
-                await self._handle_tool_results(messages, results, tools, model_flags=model_flags, remove_used_tools=self._remove_used_tools)
+                await self._handle_tool_results(messages, results, tools, model_flags=model_flags,
+                                                remove_used_tools=self._remove_used_tools)
             else:
                 break
 

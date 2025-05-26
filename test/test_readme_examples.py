@@ -382,16 +382,16 @@ async def test_currency_convert(httpserver, session_cls):
     )
 
     # Set up request handlers that will record the requests
-    first_request = httpserver.expect_ordered_request(
+    first_request = httpserver.expect_ordered_request(  # noqa F841
         CHAT_COMPLETIONS_URL,
         method='POST'
     ).respond_with_json(currency_convert_ht.intermed_resp_jsons[0])
 
-    second_request = httpserver.expect_ordered_request(
+    second_request = httpserver.expect_ordered_request(  # noqa F841
         CHAT_COMPLETIONS_URL,
         method='POST'
     ).respond_with_json(currency_convert_ht.resp_json)
-    request3 = httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json({
+    request3 = httpserver.expect_ordered_request(CHAT_COMPLETIONS_URL, method='POST').respond_with_json({  # noqa F841
         'choices': [{
             'message': {
                 'role': 'assistant',

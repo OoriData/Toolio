@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2024-present Oori Data <info@oori.dev>
 # SPDX-License-Identifier: Apache-2.0
-# demo/demo/researcher/main
+# demo/researcher/main
 '''
 Demo using Toolio for structured interaction between parts of a multi-agent research
 pipeline. The researcher combines LLM and web search to investigate a query while
@@ -36,8 +36,8 @@ Emphasis on traceable and verifiable:
 Usage:
 
 ```bash
-python demo/tee_seek/main.py "Impact of regenerative agriculture on soil health" --rigor 0.6
-python demo/tee_seeker/main.py "What's so valuable about DeepSeek's GRPO technique?" --rigor 0.5
+python demo/researcher/main.py "Impact of regenerative agriculture on soil health" --rigor 0.6
+python demo/researcher/main.py "What's so valuable about DeepSeek's GRPO technique?" --rigor 0.5
 ```
 '''
 import os
@@ -61,7 +61,7 @@ MAX_STEPS = 10  # Maximum steps before forcing termination
 MIN_STEPS = 2  # Minimum steps before allowing early termination
 DEFAULT_TRACE_FILE = 'tee_seek_trace.json'
 
-MODEL_DEFAULT = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
+MODEL_DEFAULT = 'mlx-community/Llama-3.2-3B-Instruct-4bit'
 
 LAUNCH_PROMPT_TEMPLATE = '''\
 You are a research assistant tasked with investigating the following main query:
@@ -72,7 +72,8 @@ Consider the following:
 2. What additional information do we need?
 3. What steps will you take to gather this information?
 
-Start by responding with a list of tasks, and only a list of tasks. You can work on additional steps, and the conclusion later.
+Start by responding with a list of tasks, and only a list of tasks.
+You can work on additional steps, and the conclusion later.
 Keep it brief!
 '''
 # Keep your response short, because you'll have a chance to elaborate as we go along.
@@ -255,7 +256,8 @@ class tee_seeker:
                 analysis_prompt = f'''Analyze these search results. For each key finding:
                 1. State the finding clearly and concisely
                 2. Link it to specific sources that support it
-                3. Indicate how each source relates to the finding (primary evidence, supporting detail, or related context)
+                3. Indicate how each source relates to the finding (primary evidence,
+                   supporting detail, or related context)
 
                 Search results: {json.dumps(results)}'''
                 # "Keep it succinct, with just 3-5 main takeaways"
@@ -263,7 +265,7 @@ class tee_seeker:
                 analysis = await self.llm(analysis_prompt, json_schema=ANALYSIS_SCHEMA, max_tokens=8192)
                 try:
                     analysis = json.loads(analysis)
-                except json.JSONDecodeError as e:
+                except json.JSONDecodeError:
                     raise
                 self._trace('analysis', analysis)
 

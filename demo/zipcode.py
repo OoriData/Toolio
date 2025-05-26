@@ -1,7 +1,7 @@
+# demo/zipcode.py
 '''
-demo/zipcode.py
-
-I asked Nous Hermes Theta about the zip code where I live, and it proceded to get the city wrong and tell me a whole lot about the wrong place.
+I asked Nous Hermes Theta about the zip code where I live, and it proceded to get the city wrong and tell me
+a whole lot about the wrong place.
 
 ```sh
 ❯ toolio_request --apibase="http://localhost:8000" \

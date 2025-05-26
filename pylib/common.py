@@ -7,7 +7,7 @@ Common bits; can be imported without MLX (e.g. for client use on non-Mac platfor
 '''
 import json
 import logging
-import warnings
+# import warnings
 from pathlib import Path  # noqa: E402
 from enum import Flag, auto, Enum
 
@@ -68,7 +68,7 @@ def load_or_connect(ref: str, **kwargs):
         ref (str) - file path, HuggingFace path or Toolio server URL
     '''
     if iri.matches_uri_syntax(ref):
-        from toolio.client import struct_mlx_chat_api, response_type, cmdline_tools_struct
+        from toolio.client import struct_mlx_chat_api
         llm = struct_mlx_chat_api(base_url=ref, **kwargs)
     else:
         from toolio.llm_helper import model_manager
@@ -124,7 +124,7 @@ class model_runner_base:
             raise ValueError(f'Final message in the chat prompt must have a \'user\' role. Got {msgs[-1]}')
 
         # Index the current system roles
-        system_indices = [i for i, m in enumerate(msgs) if m['role'] == 'system']
+        # system_indices = [i for i, m in enumerate(msgs) if m['role'] == 'system']
         # roles = [m['role'] for m in msgs]
         # XXX Should we at least warn about any empty messages?
 

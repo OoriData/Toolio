@@ -86,7 +86,7 @@ class V1ChatCompletionsRequest(BaseModel):
     tools: List[V1ToolFunction] = None
     # tool_choice: "auto" (default): allow model decide whether to call functions & if so, which
     # tool_choice: "required": force model to always call one or more functions
-    # tool_choice: {"type": "function", "function": {"name": "my_function"}}: force model to call only one specific function
+    # tool_choice: {"type": "function", "function": {"name": "my_function"}}: force model to call only one specific function # pylint: disable=line-too-long
     # tool_choice: "none": disable function calling & force model to only generate a user-facing message
     tool_choice: Union[V1ToolChoiceKeyword, V1ToolChoiceFunction] = None
     tool_options: V1ToolOptions = None

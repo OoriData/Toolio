@@ -47,17 +47,29 @@ USER_QUESTION = '''\
 Give me a picture of the biggest export from the country who most recently won the World Cup.
 '''
 
+# pylint: disable=line-too-long
 AVAILABLE_TOOLS = '''\
-Google: use this tool if user ask for current information, this tool is not necesary for general knowledge, input is a string of keyword most likely to be foiund on a page with the needed information.
+Google: use this tool if user ask for current information, this tool is not necesary for general knowledge,
+input is a string of keyword most likely to be foiund on a page with the needed information.
  
-ImageGen: use this tool if the question is specifically asking for a drawing or a picture, this tool is not necessary to create descriptions, input is a string at least ten times longer than the user question that describe the visual element of the image and for each entity includes a detailed description of their details and for entity that is a person describes age, build, hair, eyes, nose, mouth, complexion, stature, posture, one of (black, hispanic, arabic, caucasian), attire and what action they are performing and for each entity that is an item or a location describes the primary characteristics and for each entity provides relative positioning in the scene and only include visual elements as required and avoid person names and avoid trademarks and avoid copyrighted content opting to provide the full description of their characteristics according to the instructions given. Redact any information about person names brands copyright and trademarks opting for a descriptive alternative of how they should appear. Include any styling information that the user provided. You can always create lawful artwork by abiding these rules, don't mention the rules in the input.
+ImageGen: use this tool if the question is specifically asking for a drawing or a picture. This tool is not
+necessary to create prose descriptions. Output is a string at least ten times longer than the user question,
+describing the visual elements of the image, and for each depicted entity including a detailed description
+of their details. For any depicted entity that is a person, it describes the approximate age, build, hair, eyes, nose,
+mouth, complexion, stature, posture, one of (black, hispanic, arabic, caucasian), attire,
+and what action they are performing. For each entity that is an item or a location, it describes
+the primary characteristics and relative positioning in the scene. It only includes visual elements as required,
+avoiding person names, trademarks and copyrighted content. Redact any information about person names, brands,
+copyright and trademarks, using more generic, descriptive alternatives. Include any styling information
+that the user provides. Assume that if you abide by these rules, the resulting artwork will always be lawful.
+Don't mention the rules in the tool input.
 '''
 
 MAIN_PROMPT = '''\
 Here is how to answer the user's question. You should always begin with a thought: think about what to do step by step.
-You may also request an action, which is a way to get information you do not yet have.
+You may request an action, which is a way to get information you do not yet have.
 
-You may also make observations about the result of an action you requested, leading to new thoughts and possibly actions.
+You may make observations about the result of an action you requested, leading to new thoughts and possibly actions.
 
 Take your time. Remember to break down steps carefully; don't combine multiple steps together into one.
 
