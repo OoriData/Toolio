@@ -24,8 +24,8 @@ classifiers = [
 dependencies = [
   # MLX libraries are only installed on Apple Silicon Macs running macOS 13.5+ with Python 3.8+, as required
   # For more on environment markers see: https://hatch.pypa.io/dev/config/dependency/#environment-markers
-  "mlx>=0.23.1; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8'",
-  "mlx_lm>=0.21.4; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8'",
+  "mlx>=0.29.0; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8'",
+  "mlx_lm>=0.27.0; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8'",
   # Rather than a marker such as platform_release >= '22.6.0' (corresponding to macOS 13.5 or later) we'll make this a runtime check
 
   # This is the former logic, but in some scenarios, e.g. running within Docker, we can get platform_release markers such as Linux kernel version "6.10.14-linuxkit", which are not valid version strings according to Python's packaging.version

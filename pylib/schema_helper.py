@@ -12,8 +12,9 @@ from operator import itemgetter
 from typing import Iterable
 
 import mlx.core as mx
-# from mlx_lm.models.cache import KVCache, _BaseCache
-# from mlx_lm.models.cache import make_prompt_cache
+from mlx_lm.models.cache import KVCache, _BaseCache
+from mlx_lm.models.cache import make_prompt_cache
+from mlx_lm.models.base import QuantizedKVCache
 from mlx_lm.generate import load, stream_generate # , GenerationResponse
 
 from toolio.vendor.llm_structured_output import JsonSchemaAcceptorDriver
@@ -27,11 +28,11 @@ MLX_LM_GENERATE_KWARGS = {
     'sampler': None,
     'logits_processors': None,
     'max_kv_size': None,
-    # 'prompt_cache': None,
+    'prompt_cache': None,
     'prefill_step_size': 512,
-    'kv_bits': None,
+    'kv_bits': None,  # Set to 4 for mxfp4 quantization, 8 for int8
     'kv_group_size': 64,
-    'quantized_kv_start': 0,
+    'quantized_kv_start': 0,  # Start quantizing after N tokens
     'prompt_progress_callback': None
 }
 
@@ -80,9 +81,9 @@ class Model:
         self.eos_id = None
         self.json_schema_acceptor_driver_factory = None
         # Note: If for example the user loads a cache from a file, and we support prompt caching that way, they should not have to re-specify init params such as max_kv_size
-        # self._prompt_cache = make_prompt_cache(self.model, max_kv_size)
+        self._prompt_cache = None
 
-    def load(self, model_path: str):
+    def load(self, model_path: str, max_kv_size: int | None = None):
         '''
         Load locally or download from Huggingface hub.
         '''
@@ -94,6 +95,11 @@ class Model:
                 self.vocabulary, self.eos_id
             )
         )
+        # Initialize prompt cache if requested
+        if max_kv_size:
+            self._prompt_cache = make_prompt_cache(self.model, max_kv_size)
+        else:
+            self._prompt_cache = None
 
     def completion(
         self,
@@ -125,6 +131,10 @@ class Model:
         prompt_tokens = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True)
         self._prompt_length = len(prompt_tokens)  # Store prompt length
 
+        # Use prompt cache if available and requested
+        if cache_prompt and self._prompt_cache:
+            kwargs['prompt_cache'] = self._prompt_cache
+        
         logits_generator = stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs)
 
         self._step_count = 0
