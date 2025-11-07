@@ -40,17 +40,27 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Extra requirements for the built-in slate of tools
 tools = [
-  # Extra requirements for the built-in slate of tools
   "google-re2"
 ]
+# Extra requirements for project contributors & other developers
 dev = [
-  # Extra requirements for project contributors & other developers
   "build",
+  "twine",
+  "hatch",
+  "pipdeptree",
+  "ruff",
+  "pytest",
+  "pytest-mock",
   "pytest-asyncio",
+  "pytest-cov",
+  "respx",
+  "pgvector",
+  "asyncpg",
   "pytest-httpserver",
-  # "pytest-mock"
 ]
+
 
 [project.urls]
 Documentation = "https://OoriData.github.io/Toolio/"
