@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ogbujipt.llm_wrapper import response_type
+from ogbujipt.llm.wrapper import response_type
 
 from toolio.tool.schematics import tool, param
 

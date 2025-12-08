@@ -5,7 +5,7 @@
 '''
 Encapsulate HTTP query of LLMs for structured response, as hosted by Toolio server
 
-Modeled on ogbujipt.llm_wrapper.openai_api & ogbujipt.llm_wrapper.openai_chat_api
+Modeled on ogbujipt.llm.wrapper.openai_api & ogbujipt.llm.wrapper.openai_chat_api
 
 '''
 import json
@@ -16,14 +16,10 @@ import logging
 import httpx
 from amara3 import iri
 
-from ogbujipt import config
-from toolio.common import DEFAULT_JSON_SCHEMA_CUTOUT
-from toolio.toolcall import (
-    mixin as toolcall_mixin,  # process_tools_for_sysmsg, handle_pyfunc,
-    TOOL_CHOICE_AUTO, DEFAULT_INTERNAL_TOOLS,  # TOOL_CHOICE_NONE,
-    TOOLIO_BYPASS_TOOL_NAME, TOOLIO_FINAL_RESPONSE_TOOL_NAME)  # , CM_TOOLS_LEFT, CM_NO_TOOLS_LEFT)
+from toolio.util import attr_dict
+from toolio.common import DEFAULT_JSON_SCHEMA_CUTOUT, model_flag
+from toolio.toolcall import mixin as toolcall_mixin, DEFAULT_INTERNAL_TOOLS
 from toolio.response_helper import llm_response
-from toolio.common import model_flag
 
 HTTP_SUCCESS = 200
 
@@ -57,7 +53,7 @@ class struct_mlx_chat_api(toolcall_mixin):
             json_schema_cutout - Prompt text which should be replaced by actual JSON schema
             kwargs (dict, optional): Extra parameters for the API
         '''
-        self.parameters = config.attr_dict(kwargs)
+        self.parameters = attr_dict(kwargs)
         self.base_url = base_url
         if self.base_url:
             # If the user includes the API version in the base, don't add it again

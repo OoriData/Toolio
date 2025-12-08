@@ -194,7 +194,8 @@ exclude_lines = [
 ]
 
 [tool.pytest.ini_options]
-asyncio_default_fixture_loop_scope = "session"
+# asyncio_default_fixture_loop_scope = "session"  # Apparently obsolete. Use asyncio_mode = "auto" instead
+asyncio_mode = "auto"
 addopts = "-v"
 # addopts = [
 #   "--cov=toolio",
