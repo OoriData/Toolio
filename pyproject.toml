@@ -31,7 +31,8 @@ dependencies = [
   # This is the former logic, but in some scenarios, e.g. running within Docker, we can get platform_release markers such as Linux kernel version "6.10.14-linuxkit", which are not valid version strings according to Python's packaging.version
   # "mlx>=0.23.1; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8' and platform_release >= '22.6.0'",
   # "mlx_lm>=0.21.4; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.8' and platform_release >= '22.6.0'",
-  "ogbujipt>=0.9.3",
+  "wordloom",
+  # "ogbujipt>=0.10.0",
   "fastapi>=0.115.3",
   "click",
   "httpx>=0.27.2",

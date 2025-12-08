@@ -134,8 +134,6 @@ class Model:
         if cache_prompt and self._prompt_cache:
             kwargs['prompt_cache'] = self._prompt_cache
 
-        logits_generator = stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs)
-
         self._step_count = 0
         for generation_resp in stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs):
             yield generation_resp

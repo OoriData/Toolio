@@ -20,7 +20,7 @@ from amara3 import iri
 
 # from mlx_lm.models import olmo  # Will say:: To run olmo install ai2-olmo: pip install ai2-olmo
 
-from ogbujipt import word_loom
+import wordloom
 
 
 class model_flag(int, Flag):
@@ -89,7 +89,7 @@ def obj_file_path_parent(obj):
 
 HERE = obj_file_path_parent(lambda: 0)
 with open(HERE / Path('resource/language.toml'), mode='rb') as fp:
-    LANG = word_loom.load(fp)
+    LANG = wordloom.load(fp)
 
 
 class model_runner_base:
