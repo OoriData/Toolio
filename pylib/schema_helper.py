@@ -14,7 +14,6 @@ from typing import Iterable
 import mlx.core as mx
 from mlx_lm.models.cache import KVCache, _BaseCache
 from mlx_lm.models.cache import make_prompt_cache
-from mlx_lm.models.base import QuantizedKVCache
 from mlx_lm.generate import load, stream_generate # , GenerationResponse
 
 from toolio.vendor.llm_structured_output import JsonSchemaAcceptorDriver
@@ -134,7 +133,7 @@ class Model:
         # Use prompt cache if available and requested
         if cache_prompt and self._prompt_cache:
             kwargs['prompt_cache'] = self._prompt_cache
-        
+
         logits_generator = stream_generate(self.model, self.tokenizer, prompt_tokens, **kwargs)
 
         self._step_count = 0

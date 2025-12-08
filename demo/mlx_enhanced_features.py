@@ -13,10 +13,10 @@ from pylib.schema_helper import Model
 def demo_enhanced_features():
     print("MLX Enhanced Features Demo")
     print("=" * 50)
-    
+
     # Initialize model with prompt cache support
     model = Model()
-    
+
     # Load model with max_kv_size for prompt caching
     print("\n1. Loading model with prompt cache support...")
     model.load(
@@ -24,7 +24,7 @@ def demo_enhanced_features():
         max_kv_size=4096  # Enable prompt cache with 4K tokens
     )
     print("   ✓ Model loaded with prompt caching enabled")
-    
+
     # Example schema for structured output
     schema = {
         "type": "object",
@@ -38,13 +38,13 @@ def demo_enhanced_features():
         },
         "required": ["name", "age", "skills"]
     }
-    
+
     # Test 1: Basic generation with prompt caching
     print("\n2. Testing prompt caching...")
     messages = [
         {"role": "user", "content": "Generate a profile for a software developer"}
     ]
-    
+
     print("   First generation (cold cache):")
     result = model.completion(
         messages=messages,
@@ -55,13 +55,13 @@ def demo_enhanced_features():
     for chunk in result:
         print(f"   {chunk}", end="")
     print()
-    
+
     # Test 2: Generation with 4-bit KV quantization
     print("\n3. Testing 4-bit KV cache quantization...")
     messages2 = [
         {"role": "user", "content": "Generate a profile for a data scientist"}
     ]
-    
+
     result = model.completion(
         messages=messages2,
         schema=schema,
@@ -70,12 +70,12 @@ def demo_enhanced_features():
         quantized_kv_start=100,  # Start quantizing after 100 tokens
         max_tokens=100
     )
-    
+
     print("   Generation with 4-bit KV cache:")
     for chunk in result:
         print(f"   {chunk}", end="")
     print()
-    
+
     print("\n" + "=" * 50)
     print("Enhanced features successfully demonstrated!")
     print("\nKey improvements with MLX 0.29.0 & MLX-LM 0.27.0:")

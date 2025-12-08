@@ -56,8 +56,6 @@ dev = [
   "pytest-asyncio",
   "pytest-cov",
   "respx",
-  "pgvector",
-  "asyncpg",
   "pytest-httpserver",
 ]
 
