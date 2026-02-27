@@ -1,8 +1,12 @@
+# demo/algebra_tutor.py
 '''
-demo/algebra_tutor.py
 
 Based on OpenAI's exaple from "Introducing Structured Outputs in the API" (August 6, 2024)
 https://openai.com/index/introducing-structured-outputs-in-the-api/
+
+Just do:
+
+python algebra_tutor.py
 '''
 
 import asyncio

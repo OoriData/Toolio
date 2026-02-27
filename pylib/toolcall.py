@@ -236,9 +236,12 @@ class mixin(model_runner_base):
             called_names.append(callee_name)
 
         if remove_used_tools:
-            # req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
-            # req_tool_spec = [s for f, s in req_tools.values()]
-            req_tools = [t for t in req_tools if t not in called_names]
+            if isinstance(req_tools, dict):
+                # Filter dict to remove called tools
+                req_tools = {k: v for (k, v) in req_tools.items() if k not in called_names}
+            else:
+                # Filter list to remove called tools
+                req_tools = [t for t in req_tools if t not in called_names]
 
         continue_msg = CM_TOOLS_LEFT if req_tools else CM_NO_TOOLS_LEFT
         set_continue_message(messages, continue_msg, model_flags=model_flags)

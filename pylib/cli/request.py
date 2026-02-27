@@ -10,7 +10,7 @@ import asyncio
 import logging
 
 import click
-from ogbujipt.llm_wrapper import prompt_to_chat
+from ogbujipt.llm.wrapper import prompt_to_chat
 
 # from toolio.common import llm_response_type
 from toolio.client import struct_mlx_chat_api, cmdline_tools_struct
