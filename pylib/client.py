@@ -14,7 +14,7 @@ import logging
 # import inspect
 
 import httpx
-from amara3 import iri
+from amara import iri
 
 from toolio.util import attr_dict
 from toolio.common import DEFAULT_JSON_SCHEMA_CUTOUT, model_flag

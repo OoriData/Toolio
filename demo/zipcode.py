@@ -47,12 +47,11 @@ async def zip_code_info(code=None):
         resp = await client.get(ZIPCODE_ENDPOINT + str(code))
         info = resp.json()  # e.g. {"country":"US","state":"CO","city":"LOUISVILLE"}
 
-    # return f'{info['city']}, {info['state']}, {info['country']}'
+    print('DEBUG', f'{info['city']}, {info['state']}, {info['country']}')
     return f'{info["city"]}, {info["state"]}, {info["country"]}'
 
-# Had a problem using Hermes-2-Theta-Llama-3-8B-4bit 😬
-# MLX_MODEL_PATH = 'mlx-community/Hermes-2-Theta-Llama-3-8B-4bit'
-MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
+# MLX_MODEL_PATH = 'mlx-community/Mistral-Nemo-Instruct-2407-4bit'
+MLX_MODEL_PATH = 'mlx-community/gpt-oss-20b-MXFP4-Q4'
 
 toolio_mm = local_model_runner(MLX_MODEL_PATH, tool_reg=[zip_code_info])
 

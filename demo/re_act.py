@@ -1,7 +1,20 @@
+# demo/re_act.py
 '''
-demo/re_act.py
-
 ReAct Prompt Pattern demo: https://www.promptingguide.ai/techniques/react
+
+Demonstrates using toolio to interact with a model that follows the ReAct Prompt Pattern,
+which is a bit out of date now that you can have most models do thinking and tool-calling internally.
+
+Note: Smaller models (like Llama-3.2-3B) may struggle with the requirements of the ReAct Prompt Pattern:
+- May use step-types not in the enum (e.g., "observation", "request")
+- May generate responses that exceed token limits
+- May produce malformed JSON when truncated
+
+Run:
+
+```sh
+python re_act.py
+```
 '''
 import json
 import asyncio
@@ -40,8 +53,8 @@ SCHEMA = '''\
 }
 '''
 
-# toolio_mm = local_model_runner('mlx-community/Hermes-2-Theta-Llama-3-8B-4bit')
-toolio_mm = local_model_runner('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
+# toolio_mm = local_model_runner('mlx-community/Mistral-Nemo-Instruct-2407-4bit')
+toolio_mm = local_model_runner('mlx-community/Llama-3.2-3B-Instruct-4bit')
 
 USER_QUESTION = '''\
 Give me a picture of the biggest export from the country who most recently won the World Cup.
@@ -93,41 +106,115 @@ You can take the next step by responding according to the following schema:
 '''
 
 
-def handle_action(text):
+def handle_action(tool_name, query):
     'Worst tool-caller ever 😅'
-    print(f'TOOL CALL: {text}')
-    ltext = text.lower()
-    if 'winner' in ltext or 'world cup' in ltext or 'won' in ltext:
-        return 'Argentina won the most recent World Cup'
-    elif 'draw' in ltext or 'image' in ltext:
+    print(f'TOOL CALL: {tool_name} with query: {query}')
+    ltext = query.lower()
+
+    if tool_name == 'Google':
+        if 'winner' in ltext or 'world cup' in ltext or 'won' in ltext:
+            return 'Argentina won the most recent World Cup'
+        elif 'export' in ltext or 'biggest' in ltext:
+            # Handle export queries - Argentina's biggest export is soybeans
+            if 'argentina' in ltext:
+                return 'Argentina\'s biggest export is soybeans and soybean products'
+            else:
+                return 'You need to find out which country won the World Cup first'
+        else:
+            return f'Google search for "{query}" returned some results'
+    elif tool_name == 'ImageGen':
+        # Always return a mock image URL for ImageGen calls
         return 'Image available at https://gimmemyjpg.net'
     else:
-        raise RuntimeError('Tool call unhandled')
+        raise RuntimeError(f'Unknown tool: {tool_name}')
 
 
 async def react_demo(tmm):
     prompt = MAIN_PROMPT.format(available_tools=AVAILABLE_TOOLS, user_question=USER_QUESTION)
     done = False
+    final = None
     msgs = [{'role': 'user', 'content': prompt}]
-    while not done:
-        rt = await tmm.complete(msgs, json_schema=SCHEMA, max_tokens=512)
-        obj = json.loads(rt)
-        # print('DEBUG return object:', obj)
-        if obj['step-type'] == 'thought':
+    loop_count = 0
+    max_loops = 10  # Prevent infinite loops
+
+    while not done and loop_count < max_loops:
+        loop_count += 1
+        print(f'[Loop {loop_count}] Calling model...')
+        try:
+            # Note: Smaller models may struggle with strict JSON schema adherence
+            # Increasing max_tokens helps but they may still use non-enum step-types
+            rt = await asyncio.wait_for(
+                tmm.complete(msgs, json_schema=SCHEMA, max_tokens=1024),
+                timeout=60.0  # 60 second timeout per call
+            )
+            print(f'[Loop {loop_count}] Got response: {rt[:200]}...')
+        except asyncio.TimeoutError:
+            print(f'[Loop {loop_count}] Timeout waiting for model response')
+            break
+        except Exception as e:
+            print(f'[Loop {loop_count}] Error: {e}')
+            break
+
+        try:
+            obj = json.loads(rt)
+            print(f'[Loop {loop_count}] Parsed object: step-type={obj.get("step-type")}')
+        except json.JSONDecodeError as e:
+            print(f'[Loop {loop_count}] Failed to parse JSON (likely truncated): {e}')
+            # Try to extract partial info if JSON is truncated
+            if '"step-type"' in rt:
+                import re
+                match = re.search(r'"step-type"\s*:\s*"([^"]+)"', rt)
+                if match:
+                    step_type = match.group(1).lower()
+                    print(f'[Loop {loop_count}] Detected step-type: {step_type} (from truncated JSON)')
+                    # If it's an observation/thought/request (without action), we can continue
+                    if step_type in ['observation', 'thought', 'request']:
+                        print(f'[Loop {loop_count}] Treating truncated response as thought/observation')
+                        msgs.append({'role': 'assistant', 'content': rt[:500] + '... (truncated)'})
+                        msgs.append({'role': 'user', 'content': 'Your response was cut off. Please provide a shorter response. What\'s the next step?'})
+                        continue
+            print(f'[Loop {loop_count}] Response was: {rt[:300]}...')
+            break
+
+        step_type = obj.get('step-type', '').lower()
+
+        # Handle model variations:
+        # - "request" with action -> "action"
+        # - "request" without action -> "thought" (model is asking/thinking, not calling a tool)
+        # - "observation" -> "thought"
+        if step_type == 'request':
+            if 'action' in obj:
+                step_type = 'action'
+            else:
+                step_type = 'thought'  # Request without action is just a thought/question
+        elif step_type == 'observation':
+            step_type = 'thought'  # Treat observations as thoughts
+
+        if step_type == 'thought':
             content = obj['content']
             msgs.append({'role': 'assistant', 'content': content})
             msgs.append({'role': 'user', 'content': 'What\'s the next step?'})
-        elif obj['step-type'] == 'action':
+        elif step_type == 'action':
+            if 'action' not in obj:
+                print(f'[Loop {loop_count}] Action step-type but no action object found')
+                break
             content = obj['content']
-            result = handle_action(obj['action']['query'])
+            tool_name = obj['action'].get('name', 'Unknown')
+            query = obj['action'].get('query', '')
+            result = handle_action(tool_name, query)
             msgs.append({'role': 'assistant', 'content': content})
             msgs.append({'role': 'user', 'content': f'Action result: {result}'})
-        elif obj['step-type'] == 'final-response':
+        elif step_type == 'final-response':
             final = obj['content']
             done = True
-        # last_msgs = msgs[-2:]
-        # print(f'{last_msgs=}')
+        else:
+            print(f'[Loop {loop_count}] Unexpected step-type: {obj.get("step-type")}')
+            print(f'[Loop {loop_count}] Full object: {json.dumps(obj, indent=2)}')
+            break
 
-    print(final)
+    if done:
+        print(final)
+    else:
+        print(f'Demo ended without final response (loop_count={loop_count})')
 
 asyncio.run(react_demo(toolio_mm))

@@ -11,7 +11,7 @@ import logging
 from pathlib import Path  # noqa: E402
 from enum import Flag, auto, Enum
 
-from amara3 import iri
+from amara import iri
 
 # import mlx.core as mx
 # from mlx_lm.models import (gemma, gemma2, llama, phi, qwen, su_rope, minicpm, phi3, qwen2, gpt2,

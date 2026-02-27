@@ -1,6 +1,18 @@
+# demo/country_extract_cprofile.py
 '''
-Demo using toolio to interact with a model that extracts countries from a sentence
-It also shows how you can set a random seed for reproducible results
+Version of `country_extract.py` instrumented to profile the code for performance analysis.
+
+Most users can just use `country_extract.py`,
+which demonstrates using toolio to interact with a model that extracts countries from a sentence,
+and ignore this file.
+
+This version also demonstrates how to set a random seed for reproducible results.
+
+Run:
+
+```sh
+python country_extract_cprofile.py profile.prof
+```
 '''
 import sys
 import asyncio

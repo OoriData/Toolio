@@ -1,6 +1,5 @@
+# demo/blind_obedience.py
 '''
-demo/blind_obedience.py
-
 Can we gaslight that LLM? The tool-calling itself is simple in this demo,
 but it demonstrates having tools provide information that contradict
 what the LLM's inherent tendencies might suggest.

@@ -131,7 +131,11 @@ class model_manager(toolcall_mixin):
             req_tool_spec, req_tools = tools, None
         else:
             # Normal client-side operation
-            toolset = tools or self.toolset
+            if tools is None:
+                # Use all registered tools - convert dict to list of tool names
+                toolset = list(self._tool_registry.keys())
+            else:
+                toolset = tools
             req_tools = self._resolve_tools(toolset)
             req_tool_spec = [s for f, s in req_tools.values()]
 
@@ -188,6 +192,10 @@ class model_manager(toolcall_mixin):
 
                 results = await self._execute_tool_calls(response.tool_calls)
                 await self._handle_tool_results(messages, results, req_tools, model_flags=self.model_flags, remove_used_tools=self._remove_used_tools)
+                # Update req_tool_spec after tools may have been removed
+                req_tool_spec = [s for f, s in req_tools.values()]
+                # Continue to next iteration to get final response
+                continue
             elif response.response_type == llm_response_type.MESSAGE:  # Direct response without tool calls
                 return response
             else:
